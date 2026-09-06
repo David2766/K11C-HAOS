@@ -1,0 +1,90 @@
+From: K11C HAOS port
+Subject: [PATCH] swt6621s: adapt cfg80211 and timer APIs through Linux 6.18
+
+Use the upstream association response type, retain the U-APSD value, and
+adapt callback signatures added in Linux 6.13 and 6.17.  Linux 6.16 removed
+the old del_timer_sync() compatibility name.
+
+--- a/swt6621s_wifi/skw_compat.h
++++ b/swt6621s_wifi/skw_compat.h
+@@ -24,6 +24,12 @@
+ #include <linux/etherdevice.h>
+ #include <linux/firmware.h>
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
++#define skw_compat_del_timer_sync(timer) timer_delete_sync(timer)
++#else
++#define skw_compat_del_timer_sync(timer) del_timer_sync(timer)
++#endif
++
+ /* EID block */
+ #define SKW_WLAN_EID_EXT_HE_CAPABILITY                            35
+ #define SKW_WLAN_EID_EXT_HE_OPERATION                             36
+@@ -510,11 +516,12 @@ static inline void skw_compat_rx_assoc_resp(struct net_device *dev,
+ 			int uapsd, const u8 *req_ies, size_t req_ies_len)
+ {
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+-	struct cfg80211_rx_assoc_resp assoc_resp = {
++	struct cfg80211_rx_assoc_resp_data assoc_resp = {
+ 		.buf = buf,
+ 		.len = len,
+ 		.req_ies = req_ies,
+ 		.req_ies_len = req_ies_len,
++		.uapsd_queues = uapsd,
+ 		.ap_mld_addr = NULL,
+ 		.links[0] = {
+ 			.bss = bss,
+--- a/swt6621s_wifi/skw_cfg80211.c
++++ b/swt6621s_wifi/skw_cfg80211.c
+@@ -4281,6 +4281,14 @@
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
++static int skw_set_wiphy_params(struct wiphy *wiphy, int radio_idx,
++		u32 changed)
++#else
+ static int skw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
++#endif
+ {
+ 	int ret = 0;
+ 	struct skw_tlv_conf conf;
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0)
++	(void)radio_idx;
++#endif
+ 	skw_dbg("changed: 0x%x\n", changed);
+@@ -5309,5 +5317,13 @@
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++static int skw_set_monitor_channel(struct wiphy *wiphy,
++		struct net_device *dev, struct cfg80211_chan_def *chandef)
++#else
+ static int skw_set_monitor_channel(struct wiphy *wiphy,
+ 		struct cfg80211_chan_def *chandef)
++#endif
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++	(void)dev;
++#endif
+ 	return skw_cmd_monitor(wiphy, chandef, SKW_MONITOR_COMMON);
+ }
+--- a/swt6621s_wifi/skw_recovery.c
++++ b/swt6621s_wifi/skw_recovery.c
+@@ -92 +92 @@
+-			del_timer_sync(&core->timer);
++			skw_compat_del_timer_sync(&core->timer);
+--- a/swt6621s_wifi/skw_iface.c
++++ b/swt6621s_wifi/skw_iface.c
+@@ -756 +756 @@
+-		del_timer_sync(&iface->sta.core.timer);
++		skw_compat_del_timer_sync(&iface->sta.core.timer);
+--- a/swt6621s_wifi/skw_rx.c
++++ b/swt6621s_wifi/skw_rx.c
+@@ -1648 +1648 @@
+-	del_timer_sync(&reorder->timer);
++	skw_compat_del_timer_sync(&reorder->timer);
+--- a/swt6621s_wifi/skw_cfg80211.c
++++ b/swt6621s_wifi/skw_cfg80211.c
+@@ -3210 +3210 @@
+-	del_timer_sync(&iface->sta.core.timer);
++	skw_compat_del_timer_sync(&iface->sta.core.timer);
+@@ -3459 +3459 @@
+-		del_timer_sync(&core->timer);
++		skw_compat_del_timer_sync(&core->timer);

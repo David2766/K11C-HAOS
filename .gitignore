@@ -1,0 +1,12 @@
+*.img
+*.img.xz
+*.ko
+*.bin
+*.nvbin
+*.log
+*.dump
+*.bak
+*.orig
+*.tmp
+k11c_connectivity/modules/
+k11c_connectivity/firmware/

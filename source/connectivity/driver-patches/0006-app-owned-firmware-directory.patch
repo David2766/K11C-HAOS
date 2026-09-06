@@ -1,0 +1,249 @@
+From e75f8185421db29639983256857d95aa00a09b37 Mon Sep 17 00:00:00 2001
+From: K11C HAOS Port <k11c-haos@localhost>
+Date: Tue, 1 Sep 2026 14:10:00 +0800
+Subject: [PATCH 6/6] skw: allow firmware in an app-owned host directory
+
+HAOS keeps the root filesystem immutable and an app cannot write the host
+firmware search path.  Add a firmware_path module parameter to each of the
+three K11C modules.  When set, firmware is read from that absolute path in
+the initial mount namespace.  This lets a protected Home Assistant app own
+the blobs in its normal data directory without requiring host PID, mount,
+or full hardware access.
+
+The normal kernel firmware loader remains the fallback when firmware_path
+is empty.
+---
+ include/linux/platform_data/skw_firmware.h     | 67 ++++++++++++++++++++++++++
+ seekwaveplatform_lite/skwutil/skw_boot.c       | 14 ++++--
+ skwbt/skw_btdriver.c                           | 13 +++--
+ swt6621s_wifi/skw_compat.h                     |  6 ++-
+ swt6621s_wifi/skw_core.c                       |  8 ++-
+ 5 files changed, 101 insertions(+), 7 deletions(-)
+ create mode 100644 include/linux/platform_data/skw_firmware.h
+
+diff --git a/include/linux/platform_data/skw_firmware.h b/include/linux/platform_data/skw_firmware.h
+new file mode 100644
+index 0000000..9d6aadb
+--- /dev/null
++++ b/include/linux/platform_data/skw_firmware.h
+@@ -0,0 +1,68 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __SKW_FIRMWARE_H__
++#define __SKW_FIRMWARE_H__
++
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/firmware.h>
++#include <linux/kernel_read_file.h>
++#include <linux/limits.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++#include <linux/vmalloc.h>
++
++#define SKW_FIRMWARE_PATH_MAX 512
++
++static inline int
++skw_request_firmware_from_directory(const struct firmware **firmware,
++                                    const char *directory,
++                                    const char *name,
++                                    struct device *device)
++{
++	struct firmware *fw;
++	void *data = NULL;
++	char *path;
++	size_t size = 0;
++	ssize_t ret;
++
++	if (!directory || !directory[0])
++		return request_firmware(firmware, name, device);
++
++	if (directory[0] != '/' || !name || !name[0] || strchr(name, '/'))
++		return -EINVAL;
++
++	path = kasprintf(GFP_KERNEL, "%s/%s", directory, name);
++	if (!path)
++		return -ENOMEM;
++
++	fw = kzalloc(sizeof(*fw), GFP_KERNEL);
++	if (!fw) {
++		kfree(path);
++		return -ENOMEM;
++	}
++
++	ret = kernel_read_file_from_path_initns(path, 0, &data, INT_MAX, &size,
++						 READING_FIRMWARE);
++	kfree(path);
++	if (ret < 0)
++		goto error;
++
++	if (ret != size) {
++		ret = -EFBIG;
++		goto error;
++	}
++
++	fw->size = size;
++	fw->data = data;
++	fw->priv = NULL;
++	*firmware = fw;
++
++	return 0;
++
++error:
++	vfree(data);
++	kfree(fw);
++	return ret;
++}
++
++#endif /* __SKW_FIRMWARE_H__ */
+diff --git a/seekwaveplatform_lite/skwutil/skw_boot.c b/seekwaveplatform_lite/skwutil/skw_boot.c
+index ab6a358..429a86d 100644
+--- a/seekwaveplatform_lite/skwutil/skw_boot.c
++++ b/seekwaveplatform_lite/skwutil/skw_boot.c
+@@ -36,6 +36,7 @@
+ #include <linux/scatterlist.h>
+ #include <linux/platform_device.h>
+ #include <linux/pci.h>
++#include <skw_firmware.h>
+ #include "skw_mem_map.h"
+ #include "skw_boot.h"
+ #include "boot_config.h"
+@@ -52,6 +53,10 @@ static u64 port_dmamask = DMA_BIT_MASK(32);
+ static struct mutex boot_mutex;
+ static char *local_chip_id = "SV6160LITE";
+ int g_chipen_pin = -1;
++static char skw_firmware_path[SKW_FIRMWARE_PATH_MAX];
++module_param_string(firmware_path, skw_firmware_path,
++		    sizeof(skw_firmware_path), 0400);
++MODULE_PARM_DESC(firmware_path, "Absolute host path containing SeekWave firmware");
+ static int chip_enable = 0;
+ module_param(chip_enable, int, S_IRUGO);
+ #ifdef CONFIG_SKW_HOST_PLATFORM_NT
+@@ -335,7 +340,8 @@ static int skw_request_firmwares(struct seekwave_device *boot_data,
+ 	const struct firmware *fw = NULL;
+ 
+ 	skwboot_log("request_firmware %s\n", dram_image_name);
+-	ret = request_firmware(&fw, dram_image_name, NULL);
++	ret = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++						  dram_image_name, NULL);
+ 	if (ret < 0) {
+ 		skwboot_err("request_firmware %s fail\n", dram_image_name);
+ 		goto ret;
+@@ -358,7 +364,8 @@ static int skw_request_firmwares(struct seekwave_device *boot_data,
+ 	boot_data->dram_crc_val = crc_16_l_calc(boot_data->dram_img_data + boot_data->dram_crc_offset, boot_data->dram_dl_size);
+ 
+ 	skwboot_log("request_firmware %s\n", iram_image_name);
+-	ret = request_firmware(&fw, iram_image_name, NULL);
++	ret = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++						  iram_image_name, NULL);
+ 	if (ret < 0) {
+ 		skwboot_err("request_firmware %s fail\n", iram_image_name);
+ 		goto ret;
+@@ -388,7 +395,8 @@ static int skw_request_firmwares(struct seekwave_device *boot_data,
+ 		goto ret;
+ 	}
+ 	skwboot_log("request_firmware %s\n", nv_mem_name);
+-	ret = request_firmware(&fw, nv_mem_name, NULL);
++	ret = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++						  nv_mem_name, NULL);
+ 	if (ret < 0) {
+ 		skwboot_err("request_firmware %s fail\n", nv_mem_name);
+ 		ret = ENOENT;
+diff --git a/skwbt/skw_btdriver.c b/skwbt/skw_btdriver.c
+index 0f12fac..97b545b 100644
+--- a/skwbt/skw_btdriver.c
++++ b/skwbt/skw_btdriver.c
+@@ -34,6 +34,7 @@
+ #include <net/bluetooth/hci_core.h>
+ //#include <linux/platform_data/skw_platform_data.h>
+ #include <skw_platform_data.h>
++#include <skw_firmware.h>
+ #include <linux/fs.h>
+ #include <linux/uaccess.h>
+ #include <linux/workqueue.h>
+@@ -62,9 +63,13 @@
+ int skwbt_log_disable = 0;
+ int is_init_mode = 0;
+ uint16_t chip_version = 0;
+ static wait_queue_head_t nv_wait_queue;
+ static wait_queue_head_t recovery_wait_queue;
+ static wait_queue_head_t close_wait_queue;
++static char skw_firmware_path[SKW_FIRMWARE_PATH_MAX];
++module_param_string(firmware_path, skw_firmware_path,
++                    sizeof(skw_firmware_path), 0400);
++MODULE_PARM_DESC(firmware_path, "Absolute host path containing SeekWave firmware");
+ Wakeup_ADV_Info_St wakeup_adv_info = {0};
+ char *bd_addr = NULL;
+ 
+@@ -527,15 +532,18 @@ int btseekwave_download_nv(struct hci_dev *hdev)
+ 
+     if(SKW_CHIPID_6316 == chip_version)
+     {
+-        err = request_firmware(&fw, NV_FILE_NAME_6316, &hdev->dev);
++        err = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++                                                   NV_FILE_NAME_6316, &hdev->dev);
+     }
+     else if(SKW_CHIPID_6160_LITE == chip_version)
+     {
+-        err = request_firmware(&fw, NV_FILE_NAME_6160_LITE, &hdev->dev);
++        err = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++                                                   NV_FILE_NAME_6160_LITE, &hdev->dev);
+     }
+     else
+     {
+-        err = request_firmware(&fw, NV_FILE_NAME, &hdev->dev);
++        err = skw_request_firmware_from_directory(&fw, skw_firmware_path,
++                                                   NV_FILE_NAME, &hdev->dev);
+     }
+     if (err < 0)
+     {
+diff --git a/swt6621s_wifi/skw_compat.h b/swt6621s_wifi/skw_compat.h
+index a293bc6..c4e088b 100644
+--- a/swt6621s_wifi/skw_compat.h
++++ b/swt6621s_wifi/skw_compat.h
+@@ -25,6 +25,9 @@
+ #include <linux/rtc.h>
+ #include <linux/etherdevice.h>
+ #include <linux/firmware.h>
++#include <skw_firmware.h>
++
++extern char skw_firmware_path[SKW_FIRMWARE_PATH_MAX];
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+ #define skw_compat_del_timer_sync(timer) timer_delete_sync(timer)
+@@ -690,8 +693,10 @@ static inline int skw_compat_request_firmware(const struct firmware **fw,
+ 			    const char *name, struct device *dev)
+ {
++	if (skw_firmware_path[0])
++		return skw_request_firmware_from_directory(fw, skw_firmware_path, name, dev);
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)
+ 	return request_firmware_direct(fw, name, dev);
+ #else
+ 	return request_firmware(fw, name, dev);
+ #endif
+ }
+diff --git a/swt6621s_wifi/skw_core.c b/swt6621s_wifi/skw_core.c
+index 9439dc3..ba7f7de 100644
+--- a/swt6621s_wifi/skw_core.c
++++ b/swt6621s_wifi/skw_core.c
+@@ -59,6 +59,10 @@ struct skw_global_config {
+ };
+ 
+ static u8 skw_mac[ETH_ALEN];
++char skw_firmware_path[SKW_FIRMWARE_PATH_MAX];
++module_param_string(firmware_path, skw_firmware_path,
++		    sizeof(skw_firmware_path), 0400);
++MODULE_PARM_DESC(firmware_path, "Absolute host path containing SeekWave firmware");
+ static struct skw_global_config g_skw_config;
+ 
+ static atomic_t skw_chip_idx = ATOMIC_INIT(0);
+@@ -2280,7 +2284,7 @@ int skw_calib_download(struct wiphy *wiphy, const char *fname)
+ 	int ret = 0;
+ 	const struct firmware *fw;
+ 
+-	ret = request_firmware(&fw, fname, &wiphy->dev);
++	ret = skw_compat_request_firmware(&fw, fname, &wiphy->dev);
+ 	if (ret) {
+ 		skw_err("load %s failed, ret: %d\n", fname, ret);
+ 		return ret;
+-- 
+2.43.0

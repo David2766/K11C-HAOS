@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+/* Keep U-Boot-specific bootph policy separate from the shared Linux DTS. */
+#include "rk356x-u-boot.dtsi"
+
+/*
+ * Diagnostic A/B: do not let U-Boot probe the always-powered Wi-Fi SDIO host.
+ * The compiled boot command restores this node to "okay" in the flat DT just
+ * before EFI handoff, while U-Boot's already-created live tree stays disabled.
+ */
+&sdmmc1 {
+	status = "disabled";
+};

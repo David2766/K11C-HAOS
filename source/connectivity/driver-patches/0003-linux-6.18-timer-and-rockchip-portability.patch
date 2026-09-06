@@ -1,0 +1,119 @@
+From 8ca6ab75f7bb1e49bfa74fd478466d1dcbe5ad8c Mon Sep 17 00:00:00 2001
+From: K11C HAOS Port <k11c-haos@localhost>
+Date: Tue, 1 Sep 2026 13:00:00 +0800
+Subject: [PATCH 3/3] wifi: fix timer API and vendor Rockchip dependency
+
+Linux 6.16 renamed del_timer() to timer_delete().  Route both timer
+deletion variants through the existing compatibility header.
+
+CONFIG_ARCH_ROCKCHIP is also enabled by upstream multi-platform kernels,
+but linux/rfkill-wlan.h and rockchip_wifi_mac_addr() only exist in the
+Rockchip vendor kernel.  Make that optional integration explicit instead
+of assuming every Rockchip-capable kernel provides the vendor API.  The
+normal path still uses the radio eFuse MAC and retains the driver's random
+fallback when neither user nor eFuse MAC is valid.
+
+Enable the vendor helper only when building with:
+
+  make ... skw_rockchip_vendor_mac=y
+
+---
+ swt6621s_wifi/Makefile     | 2 +-
+ swt6621s_wifi/skw_compat.h | 2 ++
+ swt6621s_wifi/skw_rx.c     | 10 +++++-----
+ swt6621s_wifi/skw_timer.c  |  2 +-
+ 4 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/swt6621s_wifi/Makefile b/swt6621s_wifi/Makefile
+index 5a8336c..e860fb6 100644
+--- a/swt6621s_wifi/Makefile
++++ b/swt6621s_wifi/Makefile
+@@ -69,7 +69,7 @@ ifneq ($(CONFIG_SWT6621S_EXTERNAL_REGDB),y)
+ ccflags-y += -DCONFIG_SWT6621S_REGD_SELF_MANAGED
+ endif
+ 
+-ifeq ($(CONFIG_ARCH_ROCKCHIP),y)
++ifeq ($(skw_rockchip_vendor_mac),y)
+ ccflags-y += -DCONFIG_PLATFORM_ROCKCHIP
+ endif
+ 
+diff --git a/swt6621s_wifi/skw_compat.h b/swt6621s_wifi/skw_compat.h
+index 5ca6bcb..a6917ac 100644
+--- a/swt6621s_wifi/skw_compat.h
++++ b/swt6621s_wifi/skw_compat.h
+@@ -27,8 +27,10 @@
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+ #define skw_compat_del_timer_sync(timer) timer_delete_sync(timer)
++#define skw_compat_del_timer(timer) timer_delete(timer)
+ #else
+ #define skw_compat_del_timer_sync(timer) del_timer_sync(timer)
++#define skw_compat_del_timer(timer) del_timer(timer)
+ #endif
+ 
+ /* EID block */
+diff --git a/swt6621s_wifi/skw_rx.c b/swt6621s_wifi/skw_rx.c
+index 967e58e..74b2b56 100644
+--- a/swt6621s_wifi/skw_rx.c
++++ b/swt6621s_wifi/skw_rx.c
+@@ -885,7 +885,7 @@ static void skw_reorder_release(struct skw_reorder *reorder, u16 to_sn,
+ 	    atomic_read(&tid_rx->reorder->ref_cnt) == tid_rx->ref_cnt &&
+ 	    (ieee80211_sn_less(tid_rx->reorder->expired.sn, to_sn) ||
+ 	     ieee80211_sn_less(to_sn, tid_rx->win_start)))
+-		del_timer(&tid_rx->reorder->timer);
++		skw_compat_del_timer(&tid_rx->reorder->timer);
+ 
+ 	while (ieee80211_sn_less(tid_rx->win_start, target)) {
+ 		struct sk_buff_head *list;
+@@ -952,7 +952,7 @@ static void skw_reorder_timeout(struct timer_list *t)
+ 	for (i = 0; i < tid_rx->win_size; i++) {
+ 		if (tid_rx->stored_num == 0) {
+ 			if (timer_pending(&reorder->timer))
+-				del_timer(&reorder->timer);
++				skw_compat_del_timer(&reorder->timer);
+ 
+ 			break;
+ 		}
+@@ -986,7 +986,7 @@ static void skw_reorder_timeout(struct timer_list *t)
+ 
+ 			if (timer_pending(&reorder->timer) &&
+ 			    reorder->expired.sn == tid_rx->win_start)
+-				del_timer(&reorder->timer);
++				skw_compat_del_timer(&reorder->timer);
+ 
+ 			if (SKW_SKB_RXCB(skb)->amsdu_flags & SKW_AMSDU_FLAG_TAINT) {
+ 				__skb_queue_purge(list);
+@@ -1188,7 +1188,7 @@ static void skw_rx_reorder(struct skw_iface *iface, struct sk_buff *skb,
+ 
+ 		if (timer_pending(&reorder->timer) &&
+ 			reorder->expired.sn == tid_rx->win_start)
+-			del_timer(&reorder->timer);
++			skw_compat_del_timer(&reorder->timer);
+ 
+ 		tid_rx->win_start = ieee80211_sn_inc(tid_rx->win_start);
+ 
+@@ -1216,7 +1216,7 @@ out:
+ 		else if (skb)
+ 			skw_set_reorder_timer(tid_rx, desc->sn);
+ 	} else {
+ 		if (timer_pending(&reorder->timer))
+-			del_timer(&reorder->timer);
++			skw_compat_del_timer(&reorder->timer);
+ 	}
+ }
+ 
+diff --git a/swt6621s_wifi/skw_timer.c b/swt6621s_wifi/skw_timer.c
+index 29dbd39..c9fd9d9 100644
+--- a/swt6621s_wifi/skw_timer.c
++++ b/swt6621s_wifi/skw_timer.c
+@@ -220,7 +220,7 @@ void skw_timer_deinit(struct skw_core *skw)
+ {
+ 	LIST_HEAD(flush_list);
+ 
+-	del_timer(&skw->timer_data.timer);
++	skw_compat_del_timer(&skw->timer_data.timer);
+ 
+ 	spin_lock_bh(&skw->timer_data.lock);
+ 	list_replace_init(&skw->timer_data.list, &flush_list);
+-- 
+2.43.0

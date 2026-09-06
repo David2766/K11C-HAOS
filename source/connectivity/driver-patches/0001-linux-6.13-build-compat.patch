@@ -1,0 +1,51 @@
+From: K11C HAOS port
+Subject: [PATCH] skw6621s: fix external build path and Linux 6.13 namespace syntax
+
+Keep the vendor in-tree build path unchanged.  Kbuild reports subdirectory
+sources relative to the kernel tree for an external module, so anchor the
+generator path at KBUILD_EXTMOD in that case.
+
+Linux 6.13 changed MODULE_IMPORT_NS() to accept a string literal.
+
+--- a/swt6621s_wifi/Makefile
++++ b/swt6621s_wifi/Makefile
+@@ -90,6 +90,14 @@ CFLAGS_trace.o := -I$(src)
+ $(obj)/skw_core.o : $(obj)/version.h
+ 
+-skw_abs_path := $(addprefix $(abspath $(srctree))/,$(filter-out /%,$(src)))$(filter /%,$(src))
++ifneq ($(KBUILD_EXTMOD),)
++ifneq ($(filter /%,$(src)),)
++skw_abs_path := $(src)
++else
++skw_abs_path := $(abspath $(KBUILD_EXTMOD)/$(patsubst ./%,%,$(src)))
++endif
++else
++skw_abs_path := $(addprefix $(abspath $(srctree))/,$(filter-out /%,$(src)))$(filter /%,$(src))
++endif
+ $(obj)/version.h: $(skw_abs_path)/genver.pl
+ 	@$(PERL) -s $(skw_abs_path)/genver.pl $@
+ 
+--- a/seekwaveplatform_lite/skwutil/skw_boot.h
++++ b/seekwaveplatform_lite/skwutil/skw_boot.h
+@@ -66,12 +66,20 @@
+ 
+ #ifdef CONFIG_NO_GKI
+ #if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
++#if KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
++#else
+ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+ #endif
++#endif
+ #else
+ #if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
++#if KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
++#else
+ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+ #endif
+ #endif
++#endif
+ 
+ /****************************************************************
+  *Description:the skwsdio log define and the skwsdio data debug,

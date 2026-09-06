@@ -1,0 +1,97 @@
+From 69a3b8039794b86518d402a018bbb5c033471cbf Mon Sep 17 00:00:00 2001
+From: K11C HAOS Port <k11c-haos@localhost>
+Date: Tue, 1 Sep 2026 13:45:00 +0800
+Subject: [PATCH 5/5] skw: update Bluetooth remove callback and fix overlap
+
+platform_driver.remove became a void callback in Linux 6.13.  Select the
+matching return type while retaining compatibility with the vendor 6.1
+kernel.
+
+Also replace the overlapping sprintf used to append assert information.
+Reading and writing firmware_version in the same sprintf call is undefined
+and could overflow the fixed-size buffer.
+---
+ seekwaveplatform_lite/sdio/skw_sdio_rx.c | 13 +++++++++++--
+ skwbt/skw_btdriver.c                     | 12 ++++++++++++
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/seekwaveplatform_lite/sdio/skw_sdio_rx.c b/seekwaveplatform_lite/sdio/skw_sdio_rx.c
+index 2e0d843..405bf90 100644
+--- a/seekwaveplatform_lite/sdio/skw_sdio_rx.c
++++ b/seekwaveplatform_lite/sdio/skw_sdio_rx.c
+@@ -57,6 +57,15 @@ int bt_serv_debug_status=0;
+ /***********************************************************/
+ char firmware_version[128];
+ char assert_context[1024];
++
++static void skw_append_firmware_version(const char *message)
++{
++	size_t used = strnlen(firmware_version, sizeof(firmware_version));
++
++	if (used < sizeof(firmware_version))
++		scnprintf(firmware_version + used, sizeof(firmware_version) - used,
++			  ":%s\n", message);
++}
+ int  assert_context_size=0;
+ static int assert_info_print;
+ static u64 port_dmamask = DMA_BIT_MASK(32);
+@@ -762,7 +770,7 @@ static int skw_sdio_handle_packet(struct skw_sdio_data_t *skw_sdio,
+ 			skw_sdio->device_active = 1;
+ 			complete(&skw_sdio->download_done);
+ 		} else if (!strncmp((char *)cmd, "BSPASSERT", 9)){
+-			sprintf(firmware_version, "%s:%s\n", firmware_version, cmd);
++			skw_append_firmware_version(cmd);
+ 			debug_infos.cp_assert_time = skw_local_clock();
+ #ifdef CONFIG_SEEKWAVE_PLD_RELEASE
+ 			if(!skw_sdio->cp_state && sdio_ports[log_port_num].state != PORT_STATE_OPEN)
+@@ -988,7 +996,7 @@ static int skw_sdio2_handle_packet(struct skw_sdio_data_t *skw_sdio,
+ 			skw_sdio->device_active = 1;
+ 			complete(&skw_sdio->download_done);
+ 		} else if (!strncmp((char *)cmd, "BSPASSERT", 9)) {
+-			sprintf(firmware_version, "%s:%s\n", firmware_version, cmd);
++			skw_append_firmware_version(cmd);
+ 			debug_infos.cp_assert_time = skw_local_clock();
+ #ifdef CONFIG_SEEKWAVE_PLD_RELEASE
+ 			if(!skw_sdio->cp_state && sdio_ports[log_port_num].state != PORT_STATE_OPEN)
+diff --git a/skwbt/skw_btdriver.c b/skwbt/skw_btdriver.c
+index f263a8e..0f12fac 100644
+--- a/skwbt/skw_btdriver.c
++++ b/skwbt/skw_btdriver.c
+@@ -1048,7 +1048,11 @@ static int btseekwave_probe(struct platform_device *pdev)
+     return 0;
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++static void btseekwave_remove(struct platform_device *pdev)
++#else
+ static int btseekwave_remove(struct platform_device *pdev)
++#endif
+ {
+     int state = atomic_read(&atomic_close_sync);
+ 
+@@ -1078,7 +1082,11 @@ static int btseekwave_remove(struct platform_device *pdev)
+ 
+         if (!data)
+         {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++            return;
++#else
+             return 0;
++#endif
+         }
+         hdev = data->hdev;
+         data->bt_is_open = 0;
+@@ -1102,7 +1110,11 @@ static int btseekwave_remove(struct platform_device *pdev)
+ #endif
+     }
+     SKWBT_INFO("func %s end", __func__);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++    return;
++#else
+     return 0;
++#endif
+ }
+ 
+ static struct platform_driver  btseekwave_driver =
+-- 
+2.43.0

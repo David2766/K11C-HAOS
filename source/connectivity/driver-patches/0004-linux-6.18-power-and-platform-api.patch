@@ -1,0 +1,102 @@
+From 9d870dd6a43a13d5e76307db70cde76ca0a31b2c Mon Sep 17 00:00:00 2001
+From: K11C HAOS Port <k11c-haos@localhost>
+Date: Tue, 1 Sep 2026 13:20:00 +0800
+Subject: [PATCH 4/4] wifi: update power and platform APIs
+
+Use wakeup_source_register(), which is available in both the vendor 6.1
+kernel and current kernels, instead of the create/add pair removed in
+Linux 6.16.
+
+Linux 6.15 replaced hrtimer_init() with hrtimer_setup(), and Linux 6.13
+removed the temporary platform_driver.remove_new member after converting
+remove to a void callback.  Keep the source buildable across these API
+boundaries.
+---
+ swt6621s_wifi/skw_compat.h | 12 ++++++++++++
+ swt6621s_wifi/skw_core.c   | 21 ++++++++-------------
+ 2 files changed, 20 insertions(+), 13 deletions(-)
+
+diff --git a/swt6621s_wifi/skw_compat.h b/swt6621s_wifi/skw_compat.h
+index a6917ac..a293bc6 100644
+--- a/swt6621s_wifi/skw_compat.h
++++ b/swt6621s_wifi/skw_compat.h
+@@ -19,6 +19,7 @@
+ #define __SKW_COMPAT_H__
+ 
+ #include <linux/version.h>
++#include <linux/hrtimer.h>
+ #include <linux/skbuff.h>
+ #include <net/cfg80211.h>
+ #include <linux/proc_fs.h>
+@@ -34,6 +35,17 @@
+ #define skw_compat_del_timer(timer) del_timer(timer)
+ #endif
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++#define skw_compat_hrtimer_setup(timer, fn, clock, mode) \
++	hrtimer_setup(timer, fn, clock, mode)
++#else
++#define skw_compat_hrtimer_setup(timer, fn, clock, mode) \
++	do { \
++		hrtimer_init(timer, clock, mode); \
++		(timer)->function = fn; \
++	} while (0)
++#endif
++
+ /* EID block */
+ #define SKW_WLAN_EID_EXT_HE_CAPABILITY                            35
+ #define SKW_WLAN_EID_EXT_HE_OPERATION                             36
+diff --git a/swt6621s_wifi/skw_core.c b/swt6621s_wifi/skw_core.c
+index 24c985e..9439dc3 100644
+--- a/swt6621s_wifi/skw_core.c
++++ b/swt6621s_wifi/skw_core.c
+@@ -1484,21 +1484,13 @@ static void skw_buffer_deinit(struct skw_core *skw)
+ 
+ static struct wakeup_source *skw_wakeup_source_init(const char *name)
+ {
+-	struct wakeup_source *ws;
+-
+-	ws = wakeup_source_create(name);
+-	if (ws)
+-		wakeup_source_add(ws);
+-
+-	return ws;
++	return wakeup_source_register(NULL, name);
+ }
+ 
+ static void skw_wakeup_source_deinit(struct wakeup_source *ws)
+ {
+-	if (ws) {
+-		wakeup_source_remove(ws);
+-		wakeup_source_destroy(ws);
+-	}
++	if (ws)
++		wakeup_source_unregister(ws);
+ }
+ 
+ static void skw_hw_hal_init(struct skw_core *skw, struct sv6160_platform_data *pdata)
+@@ -1705,7 +1698,8 @@ static int skw_core_init(struct skw_core *skw, struct platform_device *pdev,
+ 	atomic_set(&skw->txqlen_pending, 0);
+ 
+ 	spin_lock_init(&skw->dfs.skw_pool_lock);
+-	hrtimer_init(&skw->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	skw_compat_hrtimer_setup(&skw->timer, skw_tx_timer_callback,
++				 CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+ 	spin_lock_init(&skw->timer_lock);
+ 	INIT_LIST_HEAD(&skw->dfs.skw_pulse_pool);
+ 	INIT_LIST_HEAD(&skw->dfs.skw_pseq_pool);
+@@ -2457,9 +2450,11 @@ static struct platform_driver skw_drv = {
+ 	.probe = skw_drv_probe,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++	.remove = skw_drv_remove_new,
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+ 	.remove_new = skw_drv_remove_new,
+ #else
+ 	.remove = skw_drv_remove,
+ #endif
+ 	.driver = {
+ 		.owner = THIS_MODULE,
+ 		.name = "sv6621s_wireless1",
+-- 
+2.43.0

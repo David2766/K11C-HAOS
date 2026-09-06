@@ -1,0 +1,14 @@
+app.version=0.2.3
+app.kernel=6.18.39-haos
+app.arch=aarch64
+board=KickPi K11C V1.2
+soc=RK3566
+uboot.version=2026.04
+linux.dts.sha256=1e917dc5df157ffaf9d875d0f385aabae41975ca58b0d0b14ded13269a9b72bf
+uboot.dtsi.sha256=5a9f6a08aeb7148f9088d2151cc2b3346140bd62984e4e5845c5aa45eb1e0a0b
+uboot.makefile.sha256=5a22df7ca11f41922001708f06353252ab07d3cb52508c78d27c5e6e04857e46
+uboot.hook.sha256=c2d8c9f0778f2f8ac0bf4b33b3bf4060a3feab21cbd742fc7d569432e9c91088
+ready_to_flash_image=false
+prebuilt_kernel_modules_exported=false
+vendor_firmware_exported=false
+readme_managed_by_exporter=false

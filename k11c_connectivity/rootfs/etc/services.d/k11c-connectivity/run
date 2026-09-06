@@ -1,0 +1,251 @@
+#!/usr/bin/with-contenv bashio
+set -Eeuo pipefail
+
+readonly MODULES=(skw_sdio_lite swt6621s_wifi skwbt)
+readonly EXPECTED_COMPATIBLE="kickpi,k11c"
+readonly EXPECTED_SDIO_ID="1ffe:6621"
+readonly APP_FIRMWARE_DIR="/data/firmware"
+
+module_loaded() {
+    test -d "/sys/module/$1"
+}
+
+wait_for_path() {
+    local pattern="$1"
+    local attempts="$2"
+    local delay="$3"
+    local count
+
+    for ((count = 0; count < attempts; count++)); do
+        if compgen -G "${pattern}" >/dev/null; then
+            return 0
+        fi
+        sleep "${delay}"
+    done
+
+    return 1
+}
+
+fail_with_lan_fallback() {
+    bashio::log.error "$1"
+    bashio::log.error "Wireless activation stopped. Ethernet and HAOS are left untouched."
+    exit 1
+}
+
+copy_and_verify_firmware() {
+    local antenna_mode="$1"
+    local nv_source
+
+    install -d -m 0755 "${APP_FIRMWARE_DIR}"
+    cp -f /opt/k11c/firmware/* "${APP_FIRMWARE_DIR}/"
+
+    case "${antenna_mode}" in
+        share)
+            nv_source="SWT6621S_NV_SDIO_SHARE.bin"
+            ;;
+        alone)
+            nv_source="SWT6621S_NV_SDIO_ALONE.bin"
+            ;;
+        *)
+            fail_with_lan_fallback "Unsupported antenna_mode: ${antenna_mode}"
+            ;;
+    esac
+
+    cp -f "${APP_FIRMWARE_DIR}/${nv_source}" \
+        "${APP_FIRMWARE_DIR}/SWT6621S_NV_SDIO.bin"
+    cp -f "${APP_FIRMWARE_DIR}/${nv_source}" \
+        "${APP_FIRMWARE_DIR}/SEEKWAVE_NV_SWT6621S.bin"
+    chmod 0644 "${APP_FIRMWARE_DIR}"/*
+
+    if ! cd "${APP_FIRMWARE_DIR}" || \
+       ! sha256sum -c /opt/k11c/firmware/firmware.sha256 >/dev/null; then
+        fail_with_lan_fallback "Firmware checksum verification failed"
+    fi
+}
+
+get_app_slug() {
+    local response
+    local slug
+
+    response=$(curl --fail --silent --show-error \
+        --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/apps/self/info) || \
+        response=$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            http://supervisor/addons/self/info) || \
+            fail_with_lan_fallback "Unable to query the Supervisor self-info endpoint"
+
+    slug=$(jq -er '.data.slug' <<<"${response}") || \
+        fail_with_lan_fallback "Supervisor self-info did not contain the app slug"
+
+    printf '%s' "${slug}"
+}
+
+refresh_supervisor_network() {
+    local interface="$1"
+    local response
+    local count
+
+    bashio::log.info "Refreshing Supervisor network interfaces"
+    response=$(curl --fail --silent --show-error \
+        --request POST \
+        --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/network/reload) || \
+        fail_with_lan_fallback "Unable to refresh Supervisor network interfaces"
+
+    jq -e '.result == "ok"' <<<"${response}" >/dev/null || \
+        fail_with_lan_fallback "Supervisor rejected the network refresh"
+
+    for ((count = 0; count < 20; count++)); do
+        if response=$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            http://supervisor/network/info) && \
+            jq -e --arg interface "${interface}" \
+                '.result == "ok" and any(.data.interfaces[]?; .interface == $interface and .type == "wireless")' \
+                <<<"${response}" >/dev/null; then
+            bashio::log.info "Supervisor registered ${interface}; configure Wi-Fi in Home Assistant"
+            return 0
+        fi
+
+        sleep 1
+    done
+
+    fail_with_lan_fallback "Supervisor did not register wireless interface ${interface}"
+}
+
+verify_board() {
+    local allow_unverified="$1"
+    local compatible=""
+
+    if test -r /device-tree/compatible; then
+        compatible=$(tr '\0' '\n' </device-tree/compatible)
+    fi
+
+    if grep -Fxq "${EXPECTED_COMPATIBLE}" <<<"${compatible}"; then
+        return 0
+    fi
+
+    if bashio::var.true "${allow_unverified}"; then
+        bashio::log.warning "Device tree is not marked ${EXPECTED_COMPATIBLE}; override accepted"
+        return 0
+    fi
+
+    fail_with_lan_fallback "Device tree is not marked ${EXPECTED_COMPATIBLE}"
+}
+
+verify_sdio_device() {
+    local matched=false
+    local uevent
+
+    for uevent in /sys/bus/sdio/devices/*/uevent; do
+        test -r "${uevent}" || continue
+        if grep -Eiq "SDIO_ID=${EXPECTED_SDIO_ID}|MODALIAS=sdio:.*v1ffe.*d6621" "${uevent}"; then
+            matched=true
+            break
+        fi
+    done
+
+    if ! bashio::var.true "${matched}"; then
+        fail_with_lan_fallback "SeekWave SDIO device ${EXPECTED_SDIO_ID} was not found"
+    fi
+}
+
+verify_existing_parameter() {
+    local module="$1"
+    local expected="$2"
+    local parameter="/sys/module/${module}/parameters/firmware_path"
+    local actual
+
+    test -r "${parameter}" || \
+        fail_with_lan_fallback "Loaded module ${module} has no firmware_path parameter"
+    actual=$(<"${parameter}")
+    test "${actual}" = "${expected}" || \
+        fail_with_lan_fallback "Loaded module ${module} uses an unexpected firmware path"
+}
+
+load_module() {
+    local module="$1"
+    local module_file="$2"
+    local firmware_path="$3"
+
+    if module_loaded "${module}"; then
+        verify_existing_parameter "${module}" "${firmware_path}"
+        bashio::log.info "${module} is already loaded"
+        return 0
+    fi
+
+    bashio::log.info "Loading ${module}"
+    insmod "${module_file}" firmware_path="${firmware_path}" || \
+        fail_with_lan_fallback "Failed to load ${module}"
+}
+
+main() {
+    local enabled
+    local antenna_mode
+    local allow_unverified
+    local kernel_release
+    local module_dir
+    local app_slug
+    local host_firmware_dir
+    local wireless_path
+    local wifi_interface
+
+    enabled=$(bashio::config 'enabled')
+    antenna_mode=$(bashio::config 'antenna_mode')
+    allow_unverified=$(bashio::config 'allow_unverified_board')
+
+    if ! bashio::var.true "${enabled}"; then
+        bashio::log.info "Disabled. Complete initial setup over Ethernet, then enable this app."
+        while sleep 86400; do :; done
+    fi
+
+    test "$(uname -m)" = "aarch64" || \
+        fail_with_lan_fallback "This driver bundle only supports aarch64"
+
+    verify_board "${allow_unverified}"
+    verify_sdio_device
+
+    kernel_release=$(uname -r)
+    module_dir="/opt/k11c/modules/${kernel_release}"
+    test -d "${module_dir}" || \
+        fail_with_lan_fallback "No driver bundle for kernel ${kernel_release}"
+
+    if ! cd "${module_dir}" || ! sha256sum -c modules.sha256 >/dev/null; then
+        fail_with_lan_fallback "Kernel module checksum verification failed"
+    fi
+
+    copy_and_verify_firmware "${antenna_mode}"
+    app_slug=$(get_app_slug)
+    host_firmware_dir="/mnt/data/supervisor/apps/data/${app_slug}/firmware"
+
+    modprobe cfg80211 || fail_with_lan_fallback "Unable to load cfg80211"
+    modprobe bluetooth || fail_with_lan_fallback "Unable to load bluetooth"
+
+    load_module skw_sdio_lite "${module_dir}/skw_sdio_lite.ko" "${host_firmware_dir}"
+    wait_for_path '/sys/bus/platform/devices/sv6621s_wireless1*' 30 1 || \
+        fail_with_lan_fallback "SeekWave Wi-Fi platform device did not appear"
+    wait_for_path '/sys/bus/platform/devices/btseekwave*' 30 1 || \
+        fail_with_lan_fallback "SeekWave Bluetooth platform device did not appear"
+
+    load_module swt6621s_wifi "${module_dir}/swt6621s_wifi.ko" "${host_firmware_dir}"
+    wait_for_path '/sys/class/net/*/wireless' 20 1 || \
+        fail_with_lan_fallback "Wi-Fi interface did not appear"
+    wireless_path=$(compgen -G '/sys/class/net/*/wireless' | head -n 1)
+    wifi_interface=$(basename "$(dirname "${wireless_path}")")
+    refresh_supervisor_network "${wifi_interface}"
+
+    load_module skwbt "${module_dir}/skwbt.ko" "${host_firmware_dir}"
+    wait_for_path '/sys/class/bluetooth/hci*' 20 1 || \
+        fail_with_lan_fallback "Bluetooth HCI device did not appear"
+
+    bashio::log.info "K11C Wi-Fi and Bluetooth are active on ${kernel_release}"
+
+    while sleep 30; do
+        for module in "${MODULES[@]}"; do
+            module_loaded "${module}" || \
+                fail_with_lan_fallback "Kernel module ${module} disappeared"
+        done
+    done
+}
+
+main "$@"

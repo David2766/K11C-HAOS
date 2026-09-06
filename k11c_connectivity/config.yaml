@@ -1,0 +1,23 @@
+name: K11C Connectivity
+version: 0.2.3
+slug: k11c_connectivity
+description: Load the K11C SeekWave SDIO Wi-Fi and Bluetooth drivers after LAN setup
+arch:
+  - aarch64
+startup: system
+boot: auto
+init: false
+stage: experimental
+kernel_modules: true
+devicetree: true
+host_network: true
+hassio_api: true
+hassio_role: manager
+options:
+  enabled: false
+  antenna_mode: share
+  allow_unverified_board: false
+schema:
+  enabled: bool
+  antenna_mode: list(share|alone)
+  allow_unverified_board: bool
