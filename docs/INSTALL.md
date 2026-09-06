@@ -29,7 +29,7 @@ UART settings are 1,500,000 baud, 8 data bits, no parity, and 1 stop bit.
 
 The release image contains the K11C device tree but does not contain the
 SeekWave firmware or prebuilt kernel modules. Build the completed App bundle
-as described in [BUILD.md](BUILD.md).
+as described in [CONNECTIVITY.md](CONNECTIVITY.md).
 
 Copy the completed `k11c_connectivity` directory to
 `/addons/k11c_connectivity/` on Home Assistant OS. Then run from the Terminal
@@ -77,37 +77,78 @@ adb pull /dev/block/mmcblk2 emmc-full-32gb.img
 
 Store the backup and its SHA-256 hashes away from the board.
 
-## Install from microSD to eMMC
+## Install to eMMC from U-Boot
 
-This operation overwrites the eMMC user area. Confirm that microSD boot,
-Ethernet, and Home Assistant work before continuing.
+After confirming that HAOS works from microSD, power off the board. Flash the
+same release image to that card again, or prepare a second freshly flashed
+card. Reflashing is required because HAOS can expand the data partition and
+rewrite the SD GPT during the test boot.
 
-Stop autoboot at the U-Boot prompt. On the tested board, `mmc1` is microSD and
-`mmc0` is eMMC. Read `image.raw_sectors_hex` and `image.raw_bytes_hex` from
-the matching release manifest and substitute them for `SECTORS` and `BYTES`.
+Insert the freshly flashed card and stop U-Boot before HAOS starts for the
+first time. The manual method below installs that tested HAOS image to eMMC.
+Settings made during the earlier microSD test are not copied.
 
-Load the image from microSD and calculate its CRC:
+**Warning: this overwrites the eMMC user area. A wrong MMC device number or
+image size can destroy another storage device. Back up the factory eMMC first.**
+
+**Use a freshly flashed microSD card and stop U-Boot before its first HAOS
+boot.** HAOS can expand the SD data partition and rewrite its GPT on first
+boot. If the card has already booted HAOS, flash the release image to it again
+before following this procedure.
+
+The following mapping was confirmed on the tested K11C V1.2:
+
+- `mmc1`: microSD
+- `mmc0`: eMMC, reported as 29.1 GiB
+
+Read `image.raw_sectors_hex` and `image.raw_bytes_hex` from the release
+manifest matching the image on the microSD card. Substitute those values for
+`SECTORS` and `BYTES`. Do not reuse values from another release.
+
+For the tested `k11c-haos-18.2-sd` image, the values are:
+
+```text
+SECTORS = 1d3828
+BYTES   = 3a705000
+```
+
+Stop autoboot at the U-Boot prompt. Confirm the source card, load only the
+release image area into RAM, and record its CRC:
 
 ```text
 mmc dev 1
+mmc info
+mmc part
 mmc read 40000000 0 SECTORS
 crc32 40000000 BYTES
 ```
 
-Select eMMC and verify that `mmc info` reports the expected device and 29.1
-GiB capacity before writing:
+Select eMMC and verify its identity and capacity before entering the write
+command:
 
 ```text
 mmc dev 0
 mmc info
+mmc part
+```
+
+Only continue when `mmc0` is the expected 29.1 GiB eMMC:
+
+```text
 mmc write 40000000 0 SECTORS
 mmc read 40000000 0 SECTORS
 crc32 40000000 BYTES
+```
+
+The source and destination CRC values must match. Do not continue if they are
+different. Repair the backup GPT for the full eMMC capacity and inspect the
+result:
+
+```text
 gpt repair mmc 0
 gpt verify mmc 0
 mmc part
 ```
 
-The CRC before and after the write must match. Power off completely, remove
-the microSD card, and boot from eMMC.
-
+Power off completely, remove the microSD card, and boot from eMMC. The first
+HAOS boot can take about two minutes.

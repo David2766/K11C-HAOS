@@ -17,7 +17,8 @@ Tested with HAOS 18.2 on this hardware:
 
 Confirmed working:
 
-- microSD and eMMC boot, including complete power-off boot
+- microSD boot, including complete power-off boot
+- eMMC boot on the tested board
 - Gigabit Ethernet
 - onboard Wi-Fi and Bluetooth through the K11C Connectivity App
 - HDMI
@@ -26,14 +27,18 @@ Confirmed working:
 
 Not checked yet: generic HAOS operating-system OTA, eDP/MIPI, camera, NPU,
 analog audio, RTC alarm/wake, remaining GPIO, and eMMC HS200. The tested eMMC
-configuration currently runs at 52 MHz.
+configuration currently runs at 52 MHz. The installation guide includes the
+manual U-Boot procedure for installing the tested image to eMMC after the
+microSD test.
 
 ## Documentation
 
 - [Install, first boot, wireless setup, and eMMC installation](docs/INSTALL.md)
-- [Build the HAOS image and Wi-Fi/Bluetooth App payload](docs/BUILD.md)
+- [Build the ready-to-flash HAOS image](docs/BUILD.md)
+- [Build the K11C Connectivity App](docs/CONNECTIVITY.md)
 - [한국어 설치 안내](docs/INSTALL.ko.md)
-- [한국어 빌드 안내](docs/BUILD.ko.md)
+- [한국어 HAOS 이미지 빌드](docs/BUILD.ko.md)
+- [한국어 Connectivity App 빌드](docs/CONNECTIVITY.ko.md)
 
 Ready-to-flash images, when published, are available under
 [Releases](https://github.com/David2766/K11C-HAOS/releases). Large images are
@@ -68,7 +73,8 @@ U-Boot를 결합합니다. HAOS의 8개 파티션 내용은 바꾸지 않고 그
 
 확인된 기능:
 
-- microSD와 eMMC 부팅, 완전 전원 차단 후 부팅
+- microSD 부팅과 완전 전원 차단 후 부팅
+- 테스트 보드의 eMMC 부팅
 - 기가비트 유선 LAN
 - K11C Connectivity App을 통한 온보드 Wi-Fi와 Bluetooth
 - HDMI
@@ -77,14 +83,17 @@ U-Boot를 결합합니다. HAOS의 8개 파티션 내용은 바꾸지 않고 그
 
 generic HAOS 운영체제 OTA, eDP/MIPI, 카메라, NPU, 아날로그 오디오, RTC
 alarm/wake, 나머지 GPIO, eMMC HS200은 아직 확인하지 않았습니다. 확인한 eMMC
-설정은 현재 52 MHz로 동작합니다.
+설정은 현재 52 MHz로 동작합니다. SD에서 시험을 마친 뒤 같은 이미지를
+eMMC에 설치하는 수동 U-Boot 절차는 설치 안내에서 확인할 수 있습니다.
 
 ## 문서
 
 - [설치, 첫 부팅, 무선 설정, eMMC 설치](docs/INSTALL.ko.md)
-- [HAOS 이미지와 Wi-Fi/Bluetooth App payload 빌드](docs/BUILD.ko.md)
+- [SD 카드용 HAOS 이미지 빌드](docs/BUILD.ko.md)
+- [K11C Connectivity App 빌드](docs/CONNECTIVITY.ko.md)
 - [English installation guide](docs/INSTALL.md)
-- [English build guide](docs/BUILD.md)
+- [English HAOS image build guide](docs/BUILD.md)
+- [English Connectivity App build guide](docs/CONNECTIVITY.md)
 
 바로 기록할 수 있는 이미지는 준비된 경우
 [Releases](https://github.com/David2766/K11C-HAOS/releases)에 올립니다. 큰 이미지

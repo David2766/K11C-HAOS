@@ -15,4 +15,4 @@ seekwave_firmware_exported=false
 readme_managed_by_exporter=false
 destination_preserved_paths=.git,README.md
 large_artifacts_exported=false
-documentation=docs/INSTALL.md,docs/INSTALL.ko.md,docs/BUILD.md,docs/BUILD.ko.md
+documentation=docs/INSTALL.md,docs/INSTALL.ko.md,docs/BUILD.md,docs/BUILD.ko.md,docs/CONNECTIVITY.md,docs/CONNECTIVITY.ko.md

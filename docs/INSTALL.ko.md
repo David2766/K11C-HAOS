@@ -29,7 +29,7 @@ UART 설정은 1,500,000 baud, 데이터 8비트, 패리티 없음, 정지 1비�
 ## Wi-Fi와 Bluetooth
 
 배포 이미지는 K11C 장치 트리를 포함하지만 SeekWave 펌웨어와 미리 컴파일한
-커널 모듈은 포함하지 않습니다. [BUILD.ko.md](BUILD.ko.md)에 따라 완성된 App
+커널 모듈은 포함하지 않습니다. [CONNECTIVITY.ko.md](CONNECTIVITY.ko.md)에 따라 완성된 App
 번들을 먼저 만듭니다.
 
 완성된 `k11c_connectivity` 폴더를 Home Assistant OS의
@@ -78,37 +78,78 @@ adb pull /dev/block/mmcblk2 emmc-full-32gb.img
 
 백업과 SHA-256 값은 보드 밖에 보관합니다.
 
-## microSD에서 eMMC로 설치
+## U-Boot에서 eMMC로 설치
 
-이 작업은 eMMC 사용자 영역을 덮어씁니다. 먼저 microSD 부팅, 유선 LAN,
-Home Assistant 동작을 확인하세요.
+microSD에서 HAOS가 정상 동작하는지 확인한 뒤 보드의 전원을 끕니다. 시험에
+사용한 카드에 같은 Release 이미지를 다시 기록하거나, 같은 이미지를 새로
+기록한 두 번째 카드를 준비합니다. 시험 부팅 중 HAOS가 데이터 파티션과 SD의
+GPT를 확장할 수 있으므로 다시 기록하는 과정이 필요합니다.
 
-U-Boot 자동 부팅을 멈춥니다. 테스트한 보드에서 `mmc1`은 microSD,
-`mmc0`은 eMMC입니다. 같은 Release manifest의 `image.raw_sectors_hex`와
-`image.raw_bytes_hex` 값을 각각 `SECTORS`와 `BYTES` 자리에 넣습니다.
+새로 기록한 카드를 넣고 HAOS가 처음 시작되기 전에 U-Boot에서 자동 부팅을
+멈춥니다. 아래 수동 방법으로 시험한 HAOS 이미지를 eMMC에 설치합니다. 앞서
+microSD에서 만든 설정은 복사되지 않습니다.
 
-microSD 이미지를 메모리로 읽고 CRC를 계산합니다.
+**경고: 이 작업은 eMMC 사용자 영역을 덮어씁니다. MMC 장치 번호나 이미지
+크기를 잘못 입력하면 다른 저장장치를 망가뜨릴 수 있습니다. 먼저 순정 eMMC를
+백업하세요.**
+
+**이미지를 새로 기록하고 아직 HAOS를 한 번도 부팅하지 않은 microSD를
+사용하세요.** HAOS는 첫 부팅 때 SD 데이터 파티션을 확장하고 GPT를 바꿀 수
+있습니다. 이미 HAOS로 부팅한 카드라면 Release 이미지를 다시 기록한 뒤 이
+절차를 시작하세요.
+
+테스트한 K11C V1.2에서는 다음과 같이 확인했습니다.
+
+- `mmc1`: microSD
+- `mmc0`: 29.1 GiB로 표시되는 eMMC
+
+microSD에 기록한 이미지와 같은 Release manifest에서
+`image.raw_sectors_hex`와 `image.raw_bytes_hex` 값을 확인합니다. 해당 값을
+각각 `SECTORS`와 `BYTES` 자리에 넣습니다. 다른 Release의 값을 재사용하면
+안 됩니다.
+
+확인한 `k11c-haos-18.2-sd` 이미지의 값은 다음과 같습니다.
+
+```text
+SECTORS = 1d3828
+BYTES   = 3a705000
+```
+
+U-Boot 자동 부팅을 멈춥니다. 원본 microSD를 확인하고 Release 이미지 영역만
+RAM으로 읽은 뒤 CRC를 기록합니다.
 
 ```text
 mmc dev 1
+mmc info
+mmc part
 mmc read 40000000 0 SECTORS
 crc32 40000000 BYTES
 ```
 
-eMMC를 선택합니다. 쓰기 전에 `mmc info`에서 예상한 장치와 29.1 GiB 용량이
-맞는지 확인합니다.
+eMMC를 선택하고 쓰기 명령을 입력하기 전에 장치와 용량을 확인합니다.
 
 ```text
 mmc dev 0
 mmc info
+mmc part
+```
+
+`mmc0`이 예상한 29.1 GiB eMMC일 때만 계속합니다.
+
+```text
 mmc write 40000000 0 SECTORS
 mmc read 40000000 0 SECTORS
 crc32 40000000 BYTES
+```
+
+원본과 기록 후 CRC가 같아야 합니다. 다르면 다음 단계로 진행하지 마세요.
+eMMC 전체 용량에 맞게 백업 GPT를 복구하고 결과를 확인합니다.
+
+```text
 gpt repair mmc 0
 gpt verify mmc 0
 mmc part
 ```
 
-쓰기 전후 CRC가 같아야 합니다. 전원을 완전히 끄고 microSD를 제거한 다음
-eMMC로 부팅합니다.
-
+전원을 완전히 끄고 microSD를 제거한 뒤 eMMC로 부팅합니다. HAOS 첫 부팅은
+약 2분 걸릴 수 있습니다.
