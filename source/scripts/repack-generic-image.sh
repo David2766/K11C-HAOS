@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
-set -euo pipefail
+set -Eeuo pipefail
 
 INPUT=""
 INPUT_SHA256=""
-UBOOT="/home/user/work/k11c-port-build/board-definitions/u-boot/u-boot-rockchip.bin"
+UBOOT=""
 OUTPUT=""
 SHIFT_SECTORS=32768
 SHIM_SECTOR=64
@@ -22,7 +23,7 @@ fail() {
 usage() {
 	cat <<'EOF'
 Usage: repack-generic-image.sh --input IMAGE_OR_IMAGE_XZ \
-  --input-sha256 SHA256 --output K11C_IMAGE [--uboot U_BOOT_ROCKCHIP_BIN]
+  --input-sha256 SHA256 --uboot U_BOOT_ROCKCHIP_BIN --output K11C_IMAGE
 
 The output must not already exist. Set RUN_NEGATIVE_TESTS=0 only for a quick
 local rerun; release validation must keep the default.
@@ -44,6 +45,7 @@ for command in awk cp dd jq mktemp sfdisk sgdisk sha256sum stat truncate xz; do
 	command -v "$command" >/dev/null || fail "missing command: $command"
 done
 [[ -s "$INPUT" ]] || fail "input image is missing or empty: $INPUT"
+[[ -n "$UBOOT" ]] || fail "--uboot is required"
 [[ -s "$UBOOT" ]] || fail "U-Boot image is missing or empty: $UBOOT"
 [[ -x "$VALIDATOR" ]] || fail "validator is missing or not executable: $VALIDATOR"
 [[ "$INPUT_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail "--input-sha256 is required"
@@ -148,6 +150,7 @@ output_hash="$(sha256sum "$CANDIDATE" | cut -d' ' -f1)"
 	printf 'source_artifact=%s\n' "$(basename "$INPUT")"
 	printf 'source_artifact_sha256=%s\n' "$actual_input_hash"
 	printf 'output_sha256=%s\n' "$output_hash"
+	printf 'validator_sha256=%s\n' "$(sha256sum "$VALIDATOR" | cut -d' ' -f1)"
 	cat "$REPORT"
 } > "$TMP_DIR/final-manifest.txt"
 mv "$CANDIDATE" "$OUTPUT"

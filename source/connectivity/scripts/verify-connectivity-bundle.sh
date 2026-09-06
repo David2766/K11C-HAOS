@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 CONNECTIVITY_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
+
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+    echo "Usage: verify-connectivity-bundle.sh [APP_DIR]"
+    exit 0
+fi
+
 APP_DIR=${1:-${CONNECTIVITY_DIR}/app}
 RUN_SCRIPT="${APP_DIR}/rootfs/etc/services.d/k11c-connectivity/run"
 

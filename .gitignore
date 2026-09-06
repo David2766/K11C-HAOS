@@ -1,3 +1,4 @@
+/dist/
 *.img
 *.img.xz
 *.ko

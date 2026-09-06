@@ -12,6 +12,7 @@ firmware, operating-system images, or other vendor material.
 | Original K11C HAOS scripts, App control code, documentation, and build glue | `AGPL-3.0-or-later`, unless the file says otherwise |
 | `rk3566-kickpi-k11c.dts` and `rk3566-kickpi-k11c-u-boot.dtsi` | `(GPL-2.0-or-later OR MIT)`, preserving the source SPDX expression `GPL-2.0+ OR MIT` |
 | U-Boot board hook and other copied U-Boot files | Their upstream U-Boot license, including `GPL-2.0-or-later` where marked |
+| Rockchip DDR training and BL31 binaries used in release images | Rockchip `rkbin` license; a copy is provided in `licenses/ROCKCHIP_RKBIN_LICENSE.txt` and with release artifacts |
 | SeekWave VS/SWT6621S driver source and patches against that source | The license of each affected source file; observed notices include `GPL-2.0-only`, `GPL-2.0-or-later`, and `MIT` |
 | Linux, U-Boot, Home Assistant OS, Home Assistant, Buildroot, and their dependencies | Their respective upstream licenses |
 | SeekWave firmware and NVRAM binaries | No redistribution license was identified in the obtained vendor package |
@@ -26,12 +27,16 @@ The public repository export intentionally omits:
 
 - prebuilt `*.ko` kernel modules;
 - SeekWave `*.bin` and `*.nvbin` firmware/NVRAM files;
-- ready-to-flash HAOS images and vendor OS backups.
+- vendor OS backups.
 
 The local build script can copy firmware from a vendor tree supplied by the
 user and can compile kernel-matched modules. Those locally generated files are
 ignored and preserved by the exporter, but they are not covered by the
-project's AGPL license and are not included in the public checksum manifest.
+project's AGPL license and are not included in the source repository checksum
+manifest. Ready-to-flash images may be attached separately to a project
+release; they include Home Assistant OS, U-Boot, and Rockchip `rkbin`
+components under their respective licenses, but do not include SeekWave
+firmware or prebuilt SeekWave kernel modules.
 
 Before redistributing any generated App bundle, obtain and retain the license
 terms or written permission that covers the exact firmware files. If binary

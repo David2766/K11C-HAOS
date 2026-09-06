@@ -591,9 +591,9 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_cmd &sdmmc1_clk>;
 	sd-uhs-sdr104;
-	/* Module VBAT is 3.3 V; SDIO_VSEL/VCCIO_WL is strapped to 1.8 V. */
+	/* Module VBAT is supplied by the always-on 3.3 V rail. */
 	vmmc-supply = <&wlan_32k_keepalive>;
-	vqmmc-supply = <&vcc_1v8>;
+	/* Match the working vendor DT: do not describe a switchable I/O rail. */
 	status = "okay";
 };
 

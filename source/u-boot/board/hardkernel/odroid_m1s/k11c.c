@@ -3,7 +3,7 @@
  * KickPi K11C late PHY preparation.
  *
  * The onboard Maxio PHY starts with a clock mode that prevents the RK3566
- * GMAC DMA reset from completing.  Prepare the verified PHY revision after
+ * GMAC DMA reset from completing. Prepare the verified PHY revision after
  * MDIO registration and remove only the Linux reset that would undo it.
  */
 

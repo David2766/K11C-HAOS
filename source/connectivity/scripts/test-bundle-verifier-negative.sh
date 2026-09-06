@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -Eeuo pipefail
+
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+    echo "Usage: test-bundle-verifier-negative.sh"
+    exit 0
+fi
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 CONNECTIVITY_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 VERIFIER="${SCRIPT_DIR}/verify-connectivity-bundle.sh"
-TEST_ROOT=$(mktemp -d /home/user/work/k11c-bundle-negative.XXXXXX)
+TEST_PARENT=${TMPDIR:-/tmp}
+TEST_ROOT=$(mktemp -d "${TEST_PARENT}/k11c-bundle-negative.XXXXXX")
 
 cleanup() {
     case "$(realpath "${TEST_ROOT}")" in
-        /home/user/work/k11c-bundle-negative.*) rm -rf -- "${TEST_ROOT}" ;;
+		"${TEST_PARENT}"/k11c-bundle-negative.*) rm -rf -- "${TEST_ROOT}" ;;
         *) echo "Refusing to remove unexpected test path: ${TEST_ROOT}" >&2 ;;
     esac
 }
