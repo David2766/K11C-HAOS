@@ -150,5 +150,14 @@ gpt verify mmc 0
 mmc part
 ```
 
-Power off completely, remove the microSD card, and boot from eMMC. The first
-HAOS boot can take about two minutes.
+**Do not boot or reset the board with the microSD card still inserted after
+the eMMC write completes.** Power the board off completely, disconnect power,
+remove the microSD card, and only then reconnect power and boot from eMMC. The
+first HAOS boot after installation must be from eMMC alone and can take about
+two minutes.
+
+Booting a full HAOS microSD image while an HAOS installation is also present
+on eMMC can make HAOS treat the eMMC data partition as an external data disk.
+Its `hassos-data` filesystem label may be changed to `hassos-data-dis`, which
+prevents the eMMC installation from mounting its data partition on the next
+boot.
