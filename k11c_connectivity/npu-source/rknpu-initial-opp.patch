@@ -1,0 +1,106 @@
+--- a/src/rknpu_devfreq.c
++++ b/src/rknpu_devfreq.c
+@@ -156,11 +156,24 @@
+ }
+ EXPORT_SYMBOL(rknpu_devfreq_unlock);
+ 
++/* Release the enable vote taken by dev_pm_opp_set_rate() on probe unwind. */
++static void rknpu_initial_opp_disable(void *data)
++{
++	struct device *dev = data;
++	int ret = dev_pm_opp_set_rate(dev, 0);
++
++	if (ret)
++		LOG_DEV_ERROR(dev, "failed to release initial OPP: %d\n", ret);
++}
++
+ int rknpu_devfreq_init(struct rknpu_device *rknpu_dev)
+ {
+ 	struct device *dev = rknpu_dev->dev;
+ 	struct devfreq_dev_profile *dp = &npu_devfreq_profile;
+ 	struct dev_pm_opp *opp;
++	struct dev_pm_opp_supply supply;
++	unsigned long initial_freq;
++	int initial_uv;
+ 	int ret;
+ 	static const char * const reg_names[] = { "rknpu", NULL };
+ 
+@@ -189,17 +202,49 @@
+ 		return ret;
+ 	}
+ 
+-	rknpu_dev->current_freq = clk_get_rate(rknpu_dev->clks[0].clk);
++	if (!rknpu_dev->vdd)
++		return -ENODEV;
+ 
+-	opp = devfreq_recommended_opp(dev, &rknpu_dev->current_freq, 0);
++	initial_freq = clk_get_rate(rknpu_dev->clks[0].clk);
++	opp = devfreq_recommended_opp(dev, &initial_freq, 0);
+ 	if (IS_ERR(opp)) {
+ 		ret = PTR_ERR(opp);
+ 		LOG_DEV_ERROR(dev, "failed to get recommended OPP: %d\n", ret);
+ 		return ret;
+ 	}
++	ret = dev_pm_opp_get_supplies(opp, &supply);
+ 	dev_pm_opp_put(opp);
++	if (ret)
++		return ret;
++	if (!supply.u_volt_min || supply.u_volt_min > supply.u_volt_max)
++		return -EINVAL;
+ 
+-	dp->initial_freq = rknpu_dev->current_freq;
++	/* Selecting an OPP does not apply it. Do this even at the same clock. */
++	ret = dev_pm_opp_set_rate(dev, initial_freq);
++	if (ret) {
++		LOG_DEV_ERROR(dev, "failed to apply initial OPP: %d\n", ret);
++		return ret;
++	}
++	ret = devm_add_action_or_reset(dev, rknpu_initial_opp_disable, dev);
++	if (ret)
++		return ret;
++
++	initial_uv = regulator_get_voltage(rknpu_dev->vdd);
++	if (initial_uv < 0)
++		return initial_uv;
++	if (initial_uv < supply.u_volt_min || initial_uv > supply.u_volt_max) {
++		LOG_DEV_ERROR(dev, "initial OPP voltage readback %d outside %lu..%lu uV\n",
++			      initial_uv, supply.u_volt_min, supply.u_volt_max);
++		return -ERANGE;
++	}
++	rknpu_dev->current_freq = clk_get_rate(rknpu_dev->clks[0].clk);
++	if (!rknpu_dev->current_freq || rknpu_dev->current_freq > initial_freq)
++		return -ERANGE;
++	rknpu_dev->current_volt = initial_uv;
++	LOG_DEV_INFO(dev, "K11C-NPU-OPP applied: target=%lu actual=%lu Hz volt=%d uV\n",
++		     initial_freq, rknpu_dev->current_freq, initial_uv);
++
++	dp->initial_freq = initial_freq;
+ 
+ 	ret = devfreq_add_governor(&devfreq_rknpu_ondemand);
+ 	if (ret) {
+@@ -218,10 +263,7 @@
+ 		goto err_remove_governor;
+ 	}
+ 
+-	rknpu_dev->current_freq = clk_get_rate(rknpu_dev->clks[0].clk);
+ 	rknpu_dev->ondemand_freq = rknpu_dev->current_freq;
+-	if (rknpu_dev->vdd)
+-		rknpu_dev->current_volt = regulator_get_voltage(rknpu_dev->vdd);
+ 
+ 	rknpu_dev->devfreq->previous_freq = rknpu_dev->current_freq;
+ 	if (rknpu_dev->devfreq->suspend_freq)
+--- a/src/rknpu_drv.c
++++ b/src/rknpu_drv.c
+@@ -1567,7 +1567,11 @@
+ 		goto err_detach_pm;
+ 
+ #ifndef FPGA_PLATFORM
+-	rknpu_devfreq_init(rknpu_dev);
++	ret = rknpu_devfreq_init(rknpu_dev);
++	if (ret) {
++		LOG_DEV_ERROR(dev, "initial OPP/devfreq setup failed: %d\n", ret);
++		goto err_devfreq_remove;
++	}
+ #endif
+ 
+ 	// set default power put delay to 3s

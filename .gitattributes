@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# BEGIN K11C CONNECTIVITY CI
+/k11c_connectivity/** -text
+/source/connectivity/** -text
+/.github/workflows/build.yaml -text
+/docs/CONNECTIVITY-CI.md -text
+# END K11C CONNECTIVITY CI

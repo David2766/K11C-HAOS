@@ -1,0 +1,13 @@
+obj-m := rknpu.o k11c_rk3568_otp.o
+k11c_rk3568_otp-y := src/k11c_rk3568_otp.o
+rknpu-y := src/rknpu_drv.o src/rknpu_gem.o src/rknpu_fence.o \
+           src/rknpu_job.o src/rknpu_reset.o src/rknpu_iommu.o \
+           src/rknpu_debugger.o src/rknpu_devfreq.o src/k11c_vendor_opp.o
+
+ccflags-y += -I$(src)/src/include
+ccflags-y += -I$(src)/src/include/compat
+# Feasibility-only build: Linux 6.18 keeps governor.h under drivers/devfreq.
+ccflags-y += -I$(srctree)/drivers/devfreq
+ccflags-y += -DCONFIG_ROCKCHIP_RKNPU_DRM_GEM
+ccflags-y += -DCONFIG_ROCKCHIP_RKNPU_DEBUG_FS
+ccflags-y += -DCONFIG_ROCKCHIP_RKNPU_FENCE

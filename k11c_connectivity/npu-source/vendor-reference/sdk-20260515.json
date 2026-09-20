@@ -1,0 +1,15 @@
+{
+  "commit": "22a87c6c96feef811d103e04085b46b7d7ec4786",
+  "repository": "/mnt/c/rom/HAOS/vendor-k11c/sdk-20260515-index",
+  "files": {
+    "kernel/Makefile": "2825960e7c0071f953f61334d753975091ca2d746e41d24b639e27f7ae1c8f72",
+    "kernel/drivers/rknpu/rknpu_devfreq.c": "62ae44ce7fdd419b8f580d4813178bc64f143755bf75efbfaf6b4e1f1a188a99",
+    "kernel/drivers/soc/rockchip/rockchip_opp_select.c": "1ad2cccd5abde9c8d81e7153729d9b8699f2b0728b0b844b771c70bf16094a66",
+    "kernel/drivers/soc/rockchip/rockchip_system_monitor.c": "166a161a1b567e064ff3781870330f3d2457f29fa4c768f0792dbfdb7f7b15b1",
+    "kernel/drivers/nvmem/rockchip-otp.c": "6f27ac31edd761b682352a591750c82ffbe1044a9f58dbd7e7355ce5c8355adc",
+    "kernel/include/soc/rockchip/rockchip_opp_select.h": "0a56e3a6f618aa809d2bf010b9c66b4bb9ad582ffb6f2d60e9a90fe626f5f803",
+    "kernel/include/soc/rockchip/rockchip_system_monitor.h": "feae8091f1f1cd806b3b6b2a14b1a7ec251e4e66443e59610d0d64f3ea7c70ef",
+    "kernel/arch/arm64/boot/dts/rockchip/rk3568.dtsi": "4082a460d0060e3860f086389c132760652693217dff7703348fb14f7bcbf92c",
+    "kernel/arch/arm64/boot/dts/rockchip/rk3566.dtsi": "be1fed5d6572f8ea381eda95f44afd5d2ff101dd1d1743a1d94e52dddd7acbb6"
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "exact_subtrees": [
+    "/npu-opp-table",
+    "/otp@fe38c000"
+  ],
+  "nodes": {
+    "/npu-opp-table": {
+      "compatible": "6f7065726174696e672d706f696e74732d763200",
+      "mbist-vmin": "000c96a8000dbba0000e7ef0",
+      "nvmem-cells": "00000268000002690000026a0000026b0000026c0000026d",
+      "nvmem-cell-names": "6c65616b616765007076746d006d626973742d766d696e006f70702d696e666f0073706563696669636174696f6e5f73657269616c5f6e756d6265720072656d61726b5f737065635f73657269616c5f6e756d62657200",
+      "rockchip,supported-hw": "",
+      "rockchip,max-volt": "000f4240",
+      "rockchip,temp-hysteresis": "00001388",
+      "rockchip,low-temp": "00000000",
+      "rockchip,low-temp-adjust-volt": "00000000000003e80000c350",
+      "rockchip,pvtm-voltage-sel": "00000000000148200000000000014821000153d800000001000153d9000163780000000200016379000186a000000003",
+      "rockchip,pvtm-ch": "0000000000000005",
+      "phandle": "00000266"
+    },
+    "/otp@fe38c000": {
+      "compatible": "726f636b636869702c726b333536382d6f747000",
+      "reg": "00000000fe38c0000000000000004000",
+      "#address-cells": "00000001",
+      "#size-cells": "00000001",
+      "clocks": "0000000f000000730000000f000000720000000f000000710000000f00000181",
+      "clock-names": "7573720073627069006170620070687900",
+      "resets": "0000000f000001cf",
+      "reset-names": "6f74705f70687900"
+    },
+    "/otp@fe38c000/npu-leakage@1c": {
+      "reg": "0000001c00000001",
+      "phandle": "00000268"
+    },
+    "/otp@fe38c000/core-pvtm@2a": {
+      "reg": "0000002a00000002",
+      "phandle": "00000269"
+    },
+    "/otp@fe38c000/mbist-vmin@9": {
+      "reg": "0000000900000001",
+      "bits": "0000000000000004",
+      "phandle": "0000026a"
+    },
+    "/otp@fe38c000/npu-opp-info@42": {
+      "reg": "0000004200000006",
+      "phandle": "0000026b"
+    },
+    "/otp@fe38c000/specification-serial-number@7": {
+      "reg": "0000000700000001",
+      "bits": "0000000000000005",
+      "phandle": "0000026c"
+    },
+    "/otp@fe38c000/remark-spec-serial-number@56": {
+      "reg": "0000005600000001",
+      "bits": "0000000000000005",
+      "phandle": "0000026d"
+    },
+    "/npu-opp-table/opp-200000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "000000000bebc200",
+      "opp-microvolt": "000cf850000cf850000f4240"
+    },
+    "/npu-opp-table/opp-300000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "0000000011b3dc40",
+      "opp-microvolt": "000cf850000cf850000f4240"
+    },
+    "/npu-opp-table/opp-400000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "0000000017d78400",
+      "opp-microvolt": "000cf850000cf850000f4240"
+    },
+    "/npu-opp-table/opp-600000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "0000000023c34600",
+      "opp-microvolt": "000cf850000cf850000f4240"
+    },
+    "/npu-opp-table/opp-700000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "0000000029b92700",
+      "opp-microvolt": "000d59f8000d59f8000f4240",
+      "opp-microvolt-L0": "000d59f8000d59f8000f4240",
+      "opp-microvolt-L1": "000cf850000cf850000f4240",
+      "opp-microvolt-L2": "000cf850000cf850000f4240",
+      "opp-microvolt-L3": "000cf850000cf850000f4240"
+    },
+    "/npu-opp-table/opp-800000000": {
+      "opp-supported-hw": "000000fb0000ffff",
+      "opp-hz": "000000002faf0800",
+      "opp-microvolt": "000e1d48000e1d48000f4240",
+      "opp-microvolt-L0": "000e1d48000e1d48000f4240",
+      "opp-microvolt-L1": "000dbba0000dbba0000f4240",
+      "opp-microvolt-L2": "000d59f8000d59f8000f4240",
+      "opp-microvolt-L3": "000d59f8000d59f8000f4240"
+    },
+    "/npu-opp-table/opp-900000000": {
+      "opp-supported-hw": "000000f90000ffff",
+      "opp-hz": "0000000035a4e900",
+      "opp-microvolt": "000ee098000ee098000f4240",
+      "opp-microvolt-L0": "000ee098000ee098000f4240",
+      "opp-microvolt-L1": "000e7ef0000e7ef0000f4240",
+      "opp-microvolt-L2": "000e1d48000e1d48000f4240",
+      "opp-microvolt-L3": "000dbba0000dbba0000f4240"
+    },
+    "/npu-opp-table/opp-1000000000": {
+      "opp-supported-hw": "000000f90000ffff",
+      "opp-hz": "000000003b9aca00",
+      "opp-microvolt": "000f4240000f4240000f4240",
+      "opp-microvolt-L0": "000f4240000f4240000f4240",
+      "opp-microvolt-L1": "000ee098000ee098000f4240",
+      "opp-microvolt-L2": "000e7ef0000e7ef0000f4240",
+      "opp-microvolt-L3": "000e1d48000e1d48000f4240",
+      "status": "64697361626c656400"
+    },
+    "/npu-opp-table/opp-j-600000000": {
+      "opp-supported-hw": "000000040000ffff",
+      "opp-hz": "0000000023c34600",
+      "opp-microvolt": "000dbba0000dbba0000f4240"
+    },
+    "/npu-opp-table/opp-m-900000000": {
+      "opp-supported-hw": "000000020000ffff",
+      "opp-hz": "0000000035a4e900",
+      "opp-microvolt": "000e1d48000e1d48000f4240"
+    },
+    "/npu@fde40000": {
+      "assigned-clock-rates": "23c34600",
+      "operating-points-v2": "00000266",
+      "rknpu-supply": "000000da",
+      "memory-region": "00000267",
+      "status": "6f6b617900",
+      "k11c,thermal-zone": "00000118",
+      "k11c,vendor-policy": "00000001"
+    },
+    "/i2c@fdd40000/pmic@20/regulators/DCDC_REG4": {
+      "phandle": "000000da",
+      "regulator-init-microvolt": "000dbba0"
+    },
+    "/thermal-zones/cpu-thermal": {
+      "phandle": "00000118",
+      "thermal-sensors": "0000009900000000"
+    }
+  }
+}

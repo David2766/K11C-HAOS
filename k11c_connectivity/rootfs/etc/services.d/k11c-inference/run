@@ -1,0 +1,37 @@
+#!/usr/bin/with-contenv bashio
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -Eeuo pipefail
+umask 077
+api_pid=
+rm -f /run/k11c-inference-key /run/k11c-inference-url
+stop_api() {
+    if [ -n "$api_pid" ]; then
+        kill -TERM "$api_pid" 2>/dev/null || true
+        wait "$api_pid" || true
+    fi
+    rm -f /run/k11c-inference-key /run/k11c-inference-url
+    exit 0
+}
+trap stop_api TERM INT
+
+if ! bashio::config.has_value 'inference_enabled' || \
+   ! bashio::config.true 'inference_enabled'; then
+    bashio::log.info 'Inference API disabled (inference_enabled=false).'
+elif ! bashio::config.true 'npu_enabled'; then
+    bashio::log.error 'Inference API requires npu_enabled=true. No settings were changed.'
+elif ! bashio::config 'inference_api_key' > /run/k11c-inference-key; then
+    # Bashio's config helper uses read -d ''; keep the call in a conditional
+    # so its intentional EOF does not trigger this service's errexit.
+    bashio::log.error 'Unable to read inference_api_key. Inference API stays stopped.'
+else
+    /usr/local/bin/k11c-api-python /opt/k11c/inference/app.py &
+    api_pid=$!
+    if ! wait "$api_pid"; then
+        bashio::log.error 'Inference API stopped. No automatic retry; Wi-Fi/BT and NPU driver are left running.'
+    fi
+    api_pid=
+    rm -f /run/k11c-inference-key
+fi
+
+# Do not restart the shared App, reload modules or loop on an inference failure.
+while sleep 86400; do :; done

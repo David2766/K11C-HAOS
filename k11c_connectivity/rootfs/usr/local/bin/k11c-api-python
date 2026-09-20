@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Private glibc process only. Never replace Alpine's loader or global libraries.
+set -eu
+export PYTHONHOME=/opt/k11c/npu-runtime
+export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+unset LD_PRELOAD LD_LIBRARY_PATH
+export PYTHONPATH=/opt/k11c/npu-runtime/lib/python3.11/site-packages
+exec /opt/k11c/npu-runtime/lib/ld-linux-aarch64.so.1 \
+    --library-path /opt/k11c/npu-runtime/lib \
+    /opt/k11c/npu-runtime/bin/python3.11 "$@"

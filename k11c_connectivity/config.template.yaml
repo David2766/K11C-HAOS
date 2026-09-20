@@ -1,0 +1,35 @@
+name: K11C Connectivity
+version: 0.5.3
+slug: k11c_connectivity
+description: K11C Wi-Fi, Bluetooth, and optional NPU detection API
+arch:
+  - aarch64
+startup: system
+boot: auto
+init: false
+stage: experimental
+kernel_modules: true
+devicetree: true
+video: true
+host_network: true
+hassio_api: true
+hassio_role: manager
+docker_api: true
+options:
+  enabled: false
+  antenna_mode: share
+  allow_unverified_board: false
+  npu_enabled: false
+  inference_enabled: false
+  inference_api_key: ""
+  frigate_native_enabled: false
+  frigate_native_app: ccab4aaf_frigate-fa
+schema:
+  enabled: bool
+  antenna_mode: list(share|alone)
+  allow_unverified_board: bool
+  npu_enabled: bool
+  inference_enabled: bool
+  inference_api_key: password
+  frigate_native_enabled: bool
+  frigate_native_app: str

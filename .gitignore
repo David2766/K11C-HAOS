@@ -11,3 +11,18 @@
 *.tmp
 k11c_connectivity/modules/
 k11c_connectivity/firmware/
+
+# BEGIN K11C CONNECTIVITY CI
+!/k11c_connectivity/firmware/
+!/k11c_connectivity/firmware/**
+!/k11c_connectivity/inference-assets/**
+!/k11c_connectivity/parser-assets/**
+!/k11c_connectivity/ffmpeg-assets/**
+!/source/connectivity/vendor/**
+k11c_connectivity/modules/
+__pycache__/
+*.pyc
+/work/
+/inputs/
+*.tar
+# END K11C CONNECTIVITY CI

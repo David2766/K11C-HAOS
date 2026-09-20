@@ -1,0 +1,27 @@
+{
+  "revision": 1,
+  "source_commit": "fad85d9c76611c09b561167ab405c667a0dcdeb7",
+  "source_url": "https://github.com/Kwiboo/FFmpeg/tree/fad85d9c76611c09b561167ab405c667a0dcdeb7",
+  "source_sha256": "7f7bf121f22089a219a35d2632651476294d8039663f686146b6896ee2ee1f0c",
+  "target": "aarch64 Debian bookworm / ordinary Frigate 0.17.2",
+  "hardware_backend": "v4l2request",
+  "copied_libraries": [
+    "libbz2.so.1.0",
+    "libcrypto.so.3",
+    "libdrm.so.2",
+    "liblzma.so.5",
+    "libssl.so.3",
+    "libudev.so.1",
+    "libx264.so.164",
+    "libz.so.1"
+  ],
+  "system_libraries": [
+    "ld-linux-aarch64.so.1",
+    "libc.so.6",
+    "libdl.so.2",
+    "libm.so.6",
+    "libpthread.so.0",
+    "librt.so.1"
+  ],
+  "board_decode_verified": false
+}

@@ -1,0 +1,21 @@
+#!/usr/bin/with-contenv bashio
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -Eeuo pipefail
+mkdir -p /run/k11c-npu
+rm -f /run/k11c-npu/ready
+
+# Separate service inside the SAME App: wireless does not depend on NPU success.
+# Missing option in a saved 0.2.x configuration means disabled.
+if ! bashio::config.has_value 'npu_enabled' || \
+   ! bashio::config.true 'npu_enabled'; then
+    bashio::log.info 'NPU disabled (npu_enabled=false). Wi-Fi/BT settings are unchanged.'
+elif /usr/local/bin/k11c-npu-load; then
+    touch /run/k11c-npu/ready
+    bashio::log.info 'NPU driver ready. This does not start Frigate or an inference service.'
+else
+    bashio::log.error 'NPU activation stopped. No automatic retry; Wi-Fi/BT startup continues independently.'
+fi
+
+# Stay idle on both success and failure. s6 must not repeatedly insert a failed
+# kernel module. Stopping this App deliberately does NOT unload a shared driver.
+while sleep 86400; do :; done

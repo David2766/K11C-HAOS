@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+K11C_FFMPEG_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export LD_LIBRARY_PATH="$K11C_FFMPEG_ROOT/lib"
+exec "$K11C_FFMPEG_ROOT/libexec/ffmpeg" "$@"

@@ -38,6 +38,14 @@ require_fixed_text "${APP_DIR}/config.yaml" "devicetree: true"
 require_fixed_text "${APP_DIR}/config.yaml" "host_network: true"
 require_fixed_text "${APP_DIR}/config.yaml" "hassio_role: manager"
 require_fixed_text "${APP_DIR}/config.yaml" "enabled: false"
+require_fixed_text "${APP_DIR}/config.yaml" "npu_enabled: false"
+require_fixed_text "${APP_DIR}/config.yaml" "npu_enabled: bool"
+NPU_RUN="${APP_DIR}/rootfs/etc/services.d/k11c-npu/run"
+NPU_LOAD="${APP_DIR}/rootfs/usr/local/bin/k11c-npu-load"
+bash -n "$NPU_RUN"
+sh -n "$NPU_LOAD"
+require_fixed_text "$NPU_RUN" '/usr/local/bin/k11c-npu-load'
+require_fixed_text "${APP_DIR}/Dockerfile" '/etc/services.d/k11c-npu/run /usr/local/bin/k11c-npu-load'
 require_fixed_text "${APP_DIR}/Dockerfile" \
     'ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:3.24-2026.08.0'
 require_fixed_text "${RUN_SCRIPT}" 'readonly EXPECTED_COMPATIBLE="kickpi,k11c"'
@@ -90,6 +98,14 @@ for kernel_release in "${kernel_dirs[@]}"; do
         modinfo -F parm "${module_file}" | grep -q '^firmware_path:' || \
             fail "firmware_path parameter is missing: ${module_file}"
     done
+done
+
+# Wireless-only builds are allowed here; the release pipeline separately requires
+# all five modules. Check every included kernel, not just the original r19 bundle.
+for kernel_release in "${kernel_dirs[@]}"; do
+    if test -d "${APP_DIR}/modules/${kernel_release}/npu"; then
+        python3 "$SCRIPT_DIR/kernel-bundle.py" verify "${APP_DIR}/modules/${kernel_release}/npu"
+    fi
 done
 
 firmware_dir="${APP_DIR}/firmware"

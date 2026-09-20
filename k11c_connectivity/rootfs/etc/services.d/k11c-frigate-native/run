@@ -1,0 +1,22 @@
+#!/usr/bin/with-contenv bashio
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -Eeuo pipefail
+child=
+stop_native() {
+    if [ -n "$child" ]; then
+        kill -TERM "$child" 2>/dev/null || true
+        wait "$child" || true
+    fi
+    exit 0
+}
+trap stop_native TERM INT
+if bashio::config.has_value 'frigate_native_enabled' && bashio::config.true 'frigate_native_enabled'; then
+    /usr/local/bin/k11c-api-python /opt/k11c/frigate-native/controller.py &
+    child=$!
+    wait "$child" || bashio::log.error 'Native preparation stopped; no shared driver unload or retry.'
+    child=
+else
+    bashio::log.info 'Frigate native preparation disabled.'
+fi
+while sleep 86400; do :; done
+

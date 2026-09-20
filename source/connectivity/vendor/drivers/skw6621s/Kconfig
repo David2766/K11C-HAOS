@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+if SKW6621S
+
+source "drivers/net/wireless/skw6621s/seekwaveplatform_lite/Kconfig"
+source "drivers/net/wireless/skw6621s/skwbt/Kconfig"
+source "drivers/net/wireless/skw6621s/skwifi/Kconfig"
+source "drivers/net/wireless/skw6621s/swt6621s_wifi/Kconfig"
+
+endif 

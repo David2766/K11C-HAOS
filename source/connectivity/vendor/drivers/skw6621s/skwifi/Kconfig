@@ -1,0 +1,127 @@
+config WLAN_VENDOR_SKW6316
+	tristate "SKW6316 chipset support"
+	depends on CFG80211
+	select CFG80211_WEXT_EXPORT
+	help
+	This module adds support for SeekWave 802.11ax wireless adapter chipset.
+
+	If you have a wireless card belonging to this class, say Y.
+
+	Note that the answer to this question doesn't directly affect the
+	kernel: saying N will just cause the configurator to skip all the
+	questions about these cards. If you say Y, you will be asked for
+	your specific card in the following questions.
+
+if WLAN_VENDOR_SKW6316
+config SKW6316_LEGACY_P2P
+	bool "SKW6316 Legacy P2P"
+	default n
+	help
+	Say Y here to create interface p2p0 default
+
+config SKW6316_REPEATER_MODE
+        bool "SKW6316 Repeater Mode"
+        default n
+        help
+        Say Y here to support repeater mode
+
+config SKW6316_REGD_SELF_MANAGED
+	bool "SKW6316 Regdomain"
+	depends on !SKW6316_DFS_MASTER
+	default y
+	help
+	Say Y here to support regdomain database in driver
+
+config SKW6316_TDLS
+	bool "SKW6316 TDLS"
+	default n
+	help
+	Say Y here to enable TDLS
+
+config SKW6316_DFS_MASTER
+	bool "SKW6316 DFS Master"
+	default n
+	help
+	Say Y here to support DFS master
+
+config SKW6316_OFFCHAN_TX
+	bool "Seekwave OFFCHAN TX"
+	default n
+	help
+	Say Y here to support off-channel TX
+
+config SKW6316_6GHZ
+	bool "Seekwave 6GHz"
+	default n
+	help
+	Say Y here to support 6GHz
+
+config SKW6316_USB3_WORKAROUND
+	bool "SKW6316 USB 3.0 workaround"
+	default n
+	help
+	Say Y here to enable workaround for USB 3.0
+
+config SKW6316_RX_REORDER_TIMEOUT
+	int "SKW6316 reorder timeout (50-500)"
+	range 50 500
+	default 100
+
+config SKW6316_SKB_RECYCLE
+	bool "SKW6316 skb recycle"
+	default n
+	help
+	Say Y here to support skb recycle
+
+config SKW6316_DEFAULT_COUNTRY
+	string "SKW6316 Default Country Code"
+	default ""
+	help
+	Set Default Country Code
+
+config SKW6316_CHIP_ID
+	string "SKW6316 Chip ID"
+	default ""
+	help
+	Set Chip ID
+
+config SKW6316_PROJECT_NAME
+	string "SKW6316 Default Project Name"
+	default "SEEKWAVE"
+	help
+	Set Default Project Name
+
+choice
+	prompt "SKW6316 Log Level"
+	default SKW6316_LOG_DEBUG
+	help
+	SEEKWAVE Log Level
+
+config SKW6316_LOG_ERROR
+	bool "ERROR"
+	help
+	This feature set Error log level
+
+config SKW6316_LOG_WARN
+	bool "WARN"
+	help
+	This feature set Warnning log level
+
+config SKW6316_LOG_INFO
+	bool "INFO"
+	help
+	This feature set INFO log level
+
+config SKW6316_LOG_DEBUG
+	bool "DEBUG"
+	help
+	This feature set DEBUG log level
+
+config SKW6316_LOG_DETAIL
+	bool "DETAIL"
+	help
+	This feature set DETAIL log level
+
+endchoice
+
+endif

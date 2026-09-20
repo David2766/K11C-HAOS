@@ -184,7 +184,7 @@ done
 	cd "$FIRMWARE_OUTPUT"
 	sha256sum --check --strict firmware.sha256 >/dev/null
 )
-"$SCRIPT_DIR/verify-connectivity-bundle.sh" "$APP_DIR"
+bash "$SCRIPT_DIR/verify-connectivity-bundle.sh" "$APP_DIR"
 
 echo "PASS: built K11C Connectivity App payload for $KERNEL_RELEASE"
 echo "App directory: $APP_DIR"

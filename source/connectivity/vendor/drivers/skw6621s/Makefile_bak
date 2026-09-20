@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0
+export CONFIG_SEEKWAVE_BSP_DRIVERS=y
+export CONFIG_SKW_SDIOHAL=m
+export CONFIG_SKW_BT=m
+export CONFIG_WLAN_VENDOR_SWT6621S=m
+export CONFIG_SKW6621S=y
+export CONFIG_SWT6621S_LOG_ERROR=y
+obj-$(CONFIG_SKW6621S)	+= seekwaveplatform_lite/
+obj-$(CONFIG_SKW6621S)	+= skwbt/
+obj-$(CONFIG_SKW6621S)	+= skwifi/
+obj-$(CONFIG_SKW6621S)	+= swt6621s_wifi/
+
+clean:
+	rm -f *.o *.ko *.mod.c .*.cmd *.order *.symvers
+	rm -f seekwaveplatform_lite/*.o seekwaveplatform_lite/.*.cmd
+	rm -f skwbt/*.o skwbt/.*.cmd
+	rm -f skwifi/*.o skwifi/.*.cmd
+	rm -f swt6621s_wifi/*.o swt6621s_wifi/.*.cmd

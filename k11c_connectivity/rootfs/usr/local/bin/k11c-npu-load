@@ -1,0 +1,131 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# r22 vendor policy with 900 MHz default; legacy single-OPP profiles unchanged.
+set -eu
+dt=/device-tree
+dev=/sys/bus/platform/devices/fde40000.npu
+kernel_release=$(uname -r)
+module_dir=/opt/k11c/modules/${kernel_release}/npu
+vendor_check=/opt/k11c/inference/vendor_profile.py
+fail() { echo "K11C NPU ERROR: $*" >&2; exit 1; }
+hex() { od -An -tx1 "$1" | tr -d ' \n'; }
+ref_matches() {
+    [ -r "$1" ] && [ -r "$2" ] &&
+        [ "$(hex "$1")" = "$(hex "$2")" ]
+}
+
+[ "$(uname -m)" = aarch64 ] || fail 'Only aarch64 is supported'
+[ -r "$module_dir/bundle.json" ] || fail "No packaged NPU module for kernel $kernel_release. Install a matching App update."
+jq -e --arg kernel "$kernel_release" '
+    .schema == 1 and .kernel_release == $kernel and
+    (.modules | keys == ["k11c_rk3568_otp", "rknpu"]) and
+    ([.modules[] | (.sha256 | test("^[0-9a-f]{64}$")) and
+                   (.srcversion | test("^[0-9A-F]{1,32}$"))] | all)
+' "$module_dir/bundle.json" >/dev/null || fail 'Invalid NPU module manifest'
+expected_srcversion=$(jq -r '.modules.rknpu.srcversion' "$module_dir/bundle.json")
+expected_sha256=$(jq -r '.modules.rknpu.sha256' "$module_dir/bundle.json")
+otp_srcversion=$(jq -r '.modules.k11c_rk3568_otp.srcversion' "$module_dir/bundle.json")
+otp_sha256=$(jq -r '.modules.k11c_rk3568_otp.sha256' "$module_dir/bundle.json")
+[ -r "$dt/compatible" ] || fail 'Live device tree is unavailable'
+tr '\000' '\n' < "$dt/compatible" | grep -qx 'kickpi,k11c' || fail 'Not a K11C device tree'
+[ -r "$dt/npu@fde40000/status" ] || fail 'NPU DT missing; r19 U-Boot is required'
+[ "$(tr -d '\000' < "$dt/npu@fde40000/status")" = okay ] || fail 'NPU DT disabled'
+[ ! -e "$dt/npu@fde40000/iommus" ] || fail 'This driver bundle requires the tested non-IOMMU DT'
+[ -r "$dt/reserved-memory/npu-dma-pool/size" ] || fail 'NPU CMA pool missing'
+[ "$(hex "$dt/reserved-memory/npu-dma-pool/size")" = 0000000008000000 ] || fail 'Expected the r19 128 MiB NPU pool'
+ref_matches "$dt/npu@fde40000/memory-region" "$dt/reserved-memory/npu-dma-pool/phandle" || fail 'Incorrect NPU memory-pool reference'
+ref_matches "$dt/npu@fde40000/operating-points-v2" "$dt/npu-opp-table/phandle" || fail 'Incorrect NPU OPP reference'
+vendor=false
+if [ -e "$dt/npu@fde40000/k11c,vendor-policy" ]; then
+    vendor=true
+    /usr/local/bin/k11c-api-python "$vendor_check" dt || fail 'Vendor DT validation failed'
+else
+# An additional OPP could permit an untested frequency after startup.
+opp_count=$(find "$dt/npu-opp-table" -mindepth 1 -maxdepth 1 -type d | wc -l)
+[ "$opp_count" -eq 1 ] || fail 'Expected exactly one tested NPU OPP'
+opp_dir=$(find "$dt/npu-opp-table" -mindepth 1 -maxdepth 1 -type d)
+case "${opp_dir##*/}" in
+    opp-200000000) target=200000000; hz_hex=000000000bebc200; assigned_hex=0bebc200; min_hz=180000000; max_hz=210000000 ;;
+    opp-400000000) target=400000000; hz_hex=0000000017d78400; assigned_hex=17d78400; min_hz=380000000; max_hz=400000000 ;;
+    opp-600000000) target=600000000; hz_hex=0000000023c34600; assigned_hex=23c34600; min_hz=580000000; max_hz=600000000 ;;
+    *) fail 'Only the r19 200 MHz, r20 400 MHz or r21 600 MHz single-OPP profile is allowed' ;;
+esac
+voltage_hex=000dbba0000dbba0000f4240
+# r21 uses the vendor 600 MHz OPP ceiling, not an assumed OTP-selected minimum.
+[ "$target" -ne 600000000 ] || voltage_hex=000f4240000f4240000f4240
+[ "$(hex "$opp_dir/opp-hz")" = "$hz_hex" ] || fail 'NPU OPP name/frequency mismatch'
+[ "$(hex "$opp_dir/opp-microvolt")" = "$voltage_hex" ] || fail 'Unexpected NPU OPP voltage'
+[ "$(hex "$dt/npu@fde40000/assigned-clock-rates")" = "$assigned_hex" ] || fail 'NPU assigned clock/profile mismatch'
+fi
+[ -d "$dev" ] || fail 'NPU platform device missing'
+[ -f "$module_dir/rknpu.ko" ] || fail 'NPU module missing from this App build'
+printf '%s  %s\n' "$expected_sha256" "$module_dir/rknpu.ko" | sha256sum -c - || fail 'NPU module checksum mismatch'
+
+# Read-only OTP provider must bind before the NPU consumes its calibration cells.
+if [ "$vendor" = true ]; then
+    printf '%s  %s\n' "$otp_sha256" "$module_dir/k11c_rk3568_otp.ko" | sha256sum -c - || fail 'OTP module checksum mismatch'
+    if [ ! -d /sys/module/k11c_rk3568_otp ]; then
+        [ ! -L /sys/bus/platform/devices/fe38c000.otp/driver ] || fail 'Another OTP driver is loaded'
+        timeout -k 2 15 insmod "$module_dir/k11c_rk3568_otp.ko" || fail 'OTP provider insertion failed'
+    fi
+    [ "$(cat /sys/module/k11c_rk3568_otp/srcversion)" = "$otp_srcversion" ] || fail 'Different OTP build loaded; reboot'
+    [ "$(readlink -f /sys/bus/platform/devices/fe38c000.otp/driver/module)" = /sys/module/k11c_rk3568_otp ] || fail 'OTP provider did not bind'
+fi
+
+if [ -d /sys/module/rknpu ]; then
+    [ -r /sys/module/rknpu/srcversion ] &&
+        [ "$(cat /sys/module/rknpu/srcversion)" = "$expected_srcversion" ] || fail 'A different rknpu build is loaded; reboot before retrying'
+    echo 'K11C NPU: verified 900 MHz default module is already loaded'
+else
+    [ ! -L "$dev/driver" ] || fail 'Another driver already owns the NPU'
+    timeout -k 2 15 modprobe drm || fail 'Unable to load the stock DRM module'
+    echo 'K11C NPU: loading the 900 MHz default module once'
+    timeout -k 2 20 insmod "$module_dir/rknpu.ko" || fail 'Module insertion failed; inspect the host kernel log'
+fi
+[ -r /sys/module/rknpu/srcversion ] &&
+    [ "$(cat /sys/module/rknpu/srcversion)" = "$expected_srcversion" ] || fail 'Loaded NPU module verification failed'
+[ -L "$dev/driver" ] || fail 'NPU did not bind; inspect the host kernel log'
+[ "$(basename "$(readlink -f "$dev/driver")")" = RKNPU ] || fail 'Unexpected NPU driver name'
+[ "$(readlink -f "$dev/driver/module")" = /sys/module/rknpu ] || fail 'Unexpected NPU driver owner'
+
+npu_reg=''
+for reg in /sys/class/regulator/regulator.*; do
+    [ -r "$reg/name" ] || continue
+    if [ "$(cat "$reg/name")" = vdd_npu ]; then
+        [ -z "$npu_reg" ] || fail 'Multiple vdd_npu regulators found'
+        npu_reg=$reg
+    fi
+done
+[ -n "$npu_reg" ] && [ -r "$npu_reg/microvolts" ] || fail 'Cannot read actual NPU regulator setting'
+uv=$(cat "$npu_reg/microvolts")
+case "$uv" in ''|*[!0-9]*) fail "Invalid NPU voltage: $uv";; esac
+if [ "$vendor" = true ]; then
+    /usr/local/bin/k11c-api-python "$vendor_check" runtime || fail 'Vendor policy did not become ready'
+else
+[ "$uv" -ge 900000 ] && [ "$uv" -le 1000000 ] || fail "NPU regulator outside the tested range: $uv uV"
+if [ "$target" -eq 400000000 ]; then
+    [ "$uv" -eq 900000 ] || fail 'The 400 MHz comparison requires exactly 900000 uV'
+fi
+if [ "$target" -eq 600000000 ]; then
+    [ "$uv" -eq 1000000 ] || fail 'The r21 600 MHz profile requires exactly 1000000 uV'
+fi
+freq_file="$dev/devfreq/fde40000.npu/cur_freq"
+[ -r "$freq_file" ] || fail 'NPU devfreq missing'
+freq=$(cat "$freq_file")
+case "$freq" in ''|*[!0-9]*) fail "Invalid NPU frequency: $freq";; esac
+[ "$freq" -ge "$min_hz" ] && [ "$freq" -le "$max_hz" ] || fail "NPU clock does not match the $target Hz profile: $freq Hz"
+fi
+freq=$(cat "$dev/devfreq/fde40000.npu/cur_freq")
+
+render=''
+for entry in /sys/class/drm/renderD*; do
+    [ -e "$entry/device" ] || continue
+    if [ "$(readlink -f "$entry/device")" = "$(readlink -f "$dev")" ]; then
+        [ -r "$entry/dev" ] || continue
+        render=/dev/dri/$(basename "$entry")
+        break
+    fi
+done
+[ -n "$render" ] || fail 'No DRM render device registered for the NPU'
+# Inference separately checks and opens both primary and render device nodes.
+echo "K11C_NPU_READY driver=RKNPU voltage_uv=$uv frequency_hz=$freq render=$render"

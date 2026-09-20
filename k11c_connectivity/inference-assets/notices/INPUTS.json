@@ -1,0 +1,13 @@
+{
+  "diagnostic": "Frigate API stage1",
+  "revision": 2,
+  "sources": {
+    "model": "https://github.com/MarcA711/rknn-models/releases/download/v2.3.2-2/rock-i8-yolox_nano-rk3566-v2.3.2-2.rknn",
+    "sample": "https://raw.githubusercontent.com/airockchip/rknn_model_zoo/v2.3.2/examples/yolox/model/bus.jpg",
+    "sample_git_blob": "d8ef30bd2fc1f620e9348ddd3b03f7b7758dfacb",
+    "runtime": "previous hardware-tested r19b bundle; identical SHA256 to official 0.17.2-rk /usr/lib/librknnrt.so"
+  },
+  "runtime": "2.3.2",
+  "ordinary_image": "ghcr.io/blakeblackshear/frigate@sha256:c707dfa94a2efc9e994165cc7968517ebc02edd5b391789e20f6ace006bf29e3",
+  "service_environment": "Cached official image used only as temporary Python environment; no new App/image"
+}
