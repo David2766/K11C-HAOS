@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -41,13 +42,24 @@ def check_candidate(app):
     return [b.name for b in bundles]
 
 
+def discard_prepared_tree(output, tree):
+    parent = output.resolve() / 'prepared-haos'
+    if (tree.parent.resolve() != parent or tree.is_symlink()
+            or not re.fullmatch(r'[0-9]+\.[0-9]+', tree.name)):
+        raise ValueError('Refusing to remove a non-owned prepared kernel tree')
+    shutil.rmtree(tree)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--haos-tree', type=Path, action='append', required=True)
+    preparation = p.add_mutually_exclusive_group(required=True)
+    preparation.add_argument('--haos-tree', type=Path, action='append')
+    preparation.add_argument('--prepare-supported', action='store_true', help='CI: prepare/build supported kernels sequentially, release temporary build disk after each')
     p.add_argument('--vendor-tree', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True, help='New directory; never overwritten')
     p.add_argument('--inputs', type=Path, help='Offline inputs restored by CI; not needed for local source tree')
     p.add_argument('--image', default='local/k11c-connectivity:ci')
+    p.add_argument('--release-plan', type=Path, help='Verified repository release plan; still no publication here')
     args = p.parse_args()
     if not args.image.startswith('local/') or any(c.isspace() for c in args.image):
         raise ValueError('Only a local/ image tag is allowed here; publishing is separate')
@@ -60,6 +72,14 @@ def main():
     shutil.copytree(APP_SOURCE, app, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'modules'))
     if (app / 'config.template.yaml').exists():
         (app / 'config.template.yaml').replace(app / 'config.yaml')
+    import yaml
+    plan = json.loads(args.release_plan.read_text()) if args.release_plan else None
+    if args.prepare_supported and not plan:
+        raise ValueError('--prepare-supported requires --release-plan')
+    if plan:
+        config = yaml.safe_load((app / 'config.yaml').read_text())
+        config['version'] = plan['version']
+        (app / 'config.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
     if args.inputs:
         for name in ('firmware', 'inference-assets', 'parser-assets', 'ffmpeg-assets'):
             shutil.copytree(args.inputs / name, app / name, dirs_exist_ok=True)
@@ -67,39 +87,74 @@ def main():
     # modules from a source checkout, test bundle, or previous build are carried.
     (app / 'modules').mkdir()
     provenance = []
-    for tree in args.haos_tree:
+
+    def build_trees():
+        if args.haos_tree:
+            yield from args.haos_tree
+            return
+        parent = out / 'prepared-haos'
+        parent.mkdir()
+        for release in plan['haos']:
+            if not re.fullmatch(r'[0-9]+\.[0-9]+', release):
+                raise ValueError('Invalid planned HAOS release')
+            tree = parent / release
+            run(['bash', SOURCE / 'ci/prepare-haos.sh', release, tree], log)
+            yield tree
+            # Only the just-created CI build tree is removed, after its modules
+            # and provenance have been preserved. Supplied local trees are kept.
+            discard_prepared_tree(out, tree)
+
+    for tree in build_trees():
         tree = tree.resolve()
         kernels = [k for k in (tree / 'output/build').glob('linux-*') if (k / '.config').is_file()]
         if len(kernels) != 1:
             raise ValueError('Expected exactly one configured kernel in ' + str(tree))
         kernel = kernels[0]
         release = subprocess.check_output(['make', '-s', '-C', str(kernel), 'ARCH=arm64', 'kernelrelease'], text=True).strip()
-        if (app / 'modules' / release).exists():
-            raise ValueError('Duplicate kernel release in requested matrix: ' + release)
         record = dict(kernel_release=release, kernel_config_sha256=sha(kernel / '.config'),
                       module_symvers_sha256=sha(kernel / 'Module.symvers'),
-                      haos_commit=subprocess.check_output(['git', '-C', str(tree), 'rev-parse', 'HEAD'], text=True).strip())
+                      haos_commit=subprocess.check_output(['git', '-C', str(tree), 'rev-parse', 'HEAD'], text=True).strip(),
+                      haos_release=subprocess.check_output(['git', '-C', str(tree), 'describe', '--tags', '--exact-match', 'HEAD'], text=True).strip())
+        if plan and plan['haos'].get(record['haos_release']) != record['haos_commit']:
+            raise ValueError('HAOS checkout differs from release plan')
+        previous = next((r for r in provenance if r['kernel_release'] == release), None)
+        if previous:
+            if any(previous[k] != record[k] for k in ('kernel_config_sha256', 'module_symvers_sha256')):
+                raise ValueError('Different ABI inputs share a kernel release: ' + release)
+            provenance.append(record)
+            continue
         run(['bash', SOURCE / 'scripts/build-driver-bundle.sh', '--haos-tree', tree,
              '--vendor-tree', args.vendor_tree, '--app-dir', app, '--work-root', out], log)
         run(['bash', SOURCE / 'scripts/build-npu-bundle.sh', tree, app, out], log)
         provenance.append(record)
     kernels = check_candidate(app)
+    if plan and {r['haos_release']: r['haos_commit'] for r in provenance} != plan['haos']:
+        raise ValueError('Release build omitted a supported HAOS version')
     run(['bash', SOURCE / 'scripts/verify-connectivity-bundle.sh', app], log)
-    for test in (SOURCE / 'scripts/test-npu-app.py', SOURCE / 'ci/test-ci.py'):
-        run(['env', 'K11C_TEST_APP=' + str(app), sys.executable, test], log)
+    for kernel in kernels:
+        run(['env', 'K11C_TEST_APP=' + str(app), 'K11C_TEST_KERNEL=' + kernel,
+             'K11C_TEST_VERSION=' + str(yaml.safe_load((app / 'config.yaml').read_text())['version']),
+             sys.executable, SOURCE / 'scripts/test-npu-app.py'], log)
+    run(['env', 'K11C_TEST_APP=' + str(app), sys.executable, SOURCE / 'ci/test-ci.py'], log)
     manifest = {f.relative_to(app).as_posix(): sha(f) for f in sorted(app.rglob('*')) if f.is_file()}
     (out / 'package-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    import yaml
     version = str(yaml.safe_load((app / 'config.yaml').read_text())['version'])
+    labels = []
+    if plan:
+        labels = ['--label', 'io.k11c.input-key=' + plan['input_key'],
+                  '--label', 'org.opencontainers.image.revision=' + plan['base_commit'],
+                  '--label', 'org.opencontainers.image.source=https://github.com/' + plan['repository']]
     run(['docker', 'buildx', 'build', '--load', '--platform', 'linux/arm64', '--build-arg', 'BUILD_VERSION=' + version,
-         '-t', args.image, app], log)
+         *labels, '-t', args.image, app], log)
     base = ['docker', 'run', '--rm', '--platform', 'linux/arm64', '--network', 'none', '--cap-drop', 'ALL',
             '--security-opt', 'no-new-privileges', '-v', str(SOURCE / 'scripts') + ':/tests:ro',
             '-v', str(out / 'package-manifest.json') + ':/package-manifest.json:ro',
             '-v', str(app / 'parser-assets') + ':/parser-assets:ro',
-            '--entrypoint', '/usr/local/bin/k11c-api-python', args.image, '-B']
-    run(base + ['/tests/verify-packaged-image.py'], log)
-    run(base + ['/tests/test-inference-app.py'], log)
+            '--entrypoint', '/usr/local/bin/k11c-api-python']
+    run(base + [args.image, '-B', '/tests/verify-packaged-image.py'], log)
+    for kernel in kernels:
+        run(base + ['-e', 'K11C_TEST_KERNEL=' + kernel,
+                    args.image, '-B', '/tests/test-inference-app.py'], log)
     info = json.loads(subprocess.check_output(['docker', 'image', 'inspect', args.image], text=True))[0]
     if info['Architecture'] != 'arm64' or info['Config']['Labels'].get('io.hass.version') != version:
         raise ValueError('Image architecture/version does not match catalog')
@@ -107,6 +162,8 @@ def main():
                   app_version=version, image_id=info['Id'], image=args.image, kernels=kernels,
                   inputs=provenance, package_manifest_sha256=sha(out / 'package-manifest.json'),
                   completed_epoch=int(time.time()))
+    if plan:
+        result['release_plan_sha256'] = hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 

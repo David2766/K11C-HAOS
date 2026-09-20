@@ -16,8 +16,9 @@ import yaml
 APP = Path(os.environ.get('K11C_TEST_APP', Path(__file__).resolve().parents[1] / 'app'))
 RUN = (APP / 'rootfs/etc/services.d/k11c-npu/run').read_text()
 LOAD = (APP / 'rootfs/usr/local/bin/k11c-npu-load').read_text()
-MODULE = APP / 'modules/6.18.39-haos/npu/rknpu.ko'
-SRC = 'CD8FDCD74670016E17E2BFD'
+KERNEL = os.environ.get('K11C_TEST_KERNEL', '6.18.39-haos')
+MODULE = APP / 'modules' / KERNEL / 'npu/rknpu.ko'
+SRC = json.loads((MODULE.parent / 'bundle.json').read_text())['modules']['rknpu']['srcversion']
 
 
 def execute(case, run=RUN, loader=LOAD):
@@ -91,11 +92,11 @@ def execute(case, run=RUN, loader=LOAD):
         (root / driver.lstrip('/')).mkdir(parents=True)
         symlink(driver + '/module', '/sys/module/rknpu')
 
-        copy = write('/opt/k11c/modules/6.18.39-haos/npu/rknpu.ko', MODULE.read_bytes())
-        bundle = write('/opt/k11c/modules/6.18.39-haos/npu/bundle.json',
+        copy = write('/opt/k11c/modules/' + KERNEL + '/npu/rknpu.ko', MODULE.read_bytes())
+        bundle = write('/opt/k11c/modules/' + KERNEL + '/npu/bundle.json',
                        (MODULE.parent / 'bundle.json').read_bytes())
         if case == 'manifest_kernel':
-            data = json.loads(bundle.read_text()); data['kernel_release'] = '6.18.52-haos'
+            data = json.loads(bundle.read_text()); data['kernel_release'] = '0.0.0-wrong'
             bundle.write_text(json.dumps(data))
         if case.startswith('vendor_'):
             # Execute the actual shipped validator, not a mocked PASS command.
@@ -144,7 +145,7 @@ def execute(case, run=RUN, loader=LOAD):
             write(device + '/devfreq/fde40000.npu/cur_freq', str(state['target_hz']))
             write(device + '/vendor_policy', ' '.join('%s=%d'%p for p in state.items()))
             write('/sys/class/regulator/regulator.4/microvolts', str(state['voltage_uv']))
-            otp_module=write('/opt/k11c/modules/6.18.39-haos/npu/k11c_rk3568_otp.ko',
+            otp_module=write('/opt/k11c/modules/' + KERNEL + '/npu/k11c_rk3568_otp.ko',
                              (MODULE.parent/'k11c_rk3568_otp.ko').read_bytes())
             (root/'sys/bus/platform/devices/fe38c000.otp').mkdir(parents=True)
             if case=='vendor_bad_otp_hash': otp_module.write_bytes(b'corrupt')
@@ -255,7 +256,7 @@ bashio::log.error() { echo "ERROR: $*"; }
         env = {**os.environ, 'PATH': str(bins) + ':' + os.environ['PATH'],
                'TEST_ROOT': str(root), 'TEST_CASE': case,
                'TEST_ARCH': 'x86_64' if case == 'wrong_arch' else 'aarch64',
-               'TEST_KERNEL': '6.19.0-haos' if case == 'new_kernel' else '6.18.39-haos'}
+               'TEST_KERNEL': '0.0.0-unsupported' if case == 'new_kernel' else KERNEL}
         result = subprocess.run(['bash', str(script)], env=env, capture_output=True,
                                 text=True, timeout=10)
         calls = (root / 'calls').read_text().splitlines() if (root / 'calls').exists() else []
@@ -368,7 +369,8 @@ source_config = Path(__file__).resolve().parents[1] / 'app/config.yaml'
 if not source_config.exists():
     source_config = Path(__file__).resolve().parents[3] / 'k11c_connectivity/config.template.yaml'
 declared_version = yaml.safe_load(source_config.read_text())['version']
-assert config['slug'] == 'k11c_connectivity' and config['version'] == declared_version
+assert config['slug'] == 'k11c_connectivity'
+assert str(config['version']) == os.environ.get('K11C_TEST_VERSION', str(declared_version))
 assert config['options'] == {'enabled': False, 'antenna_mode': 'share',
                              'allow_unverified_board': False, 'npu_enabled': False,
                              'inference_enabled': False, 'inference_api_key': '',

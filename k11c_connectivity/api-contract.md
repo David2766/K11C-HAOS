@@ -71,7 +71,7 @@ completion/failure. No camera identifiers, pixels, predictions, URL or key are
 included in the measurement report. Standard Docker/App logs retain the two
 diagnostic messages; no extra media files or persistent diagnostic service.
 
-## Kernel bundle selection (CI preparation, unreleased)
+## Kernel bundle selection (automatic release builds)
 
 The NPU loader, HTTP device preflight and vendor-policy validator now select
 `/opt/k11c/modules/<uname -r>/npu/bundle.json`. The schema contains the exact
@@ -80,6 +80,12 @@ kernel mismatches, corrupt modules and different loaded builds still stop
 activation. No version override, fallback to another kernel, module hot-reload,
 network download or new HTTP endpoint is introduced. Existing 6.18.39 binaries
 are unchanged; CI candidate binaries do not imply board validation.
+
+The release pipeline packages every supported kernel in one image. Registry
+publication and the Supervisor catalog version are updated only after the
+actual ARM64 image passes software tests and an anonymous pull verifies its
+identity. This adds no device-facing API, privilege, module hot-reload, forced
+OS update or reboot. Users install the matching App update before a new HAOS.
 
 ## NPU default profile (0.5.1)
 

@@ -33,6 +33,9 @@ import numpy as np
 from PIL import Image
 
 KEY = 'fixture-key-never-use-in-deployment-0123456789'
+KERNEL = os.environ.get('K11C_TEST_KERNEL') or sorted(Path('/opt/k11c/modules').iterdir())[0].name
+BUNDLE_PATH = '/opt/k11c/modules/' + KERNEL + '/npu/bundle.json'
+BUNDLE = json.loads(Path(BUNDLE_PATH).read_text())
 
 
 class Backend:
@@ -138,16 +141,15 @@ class Tests(unittest.TestCase):
             def path(p): return root / str(p).lstrip('/')
             def write(p, value):
                 file=path(p);file.parent.mkdir(parents=True,exist_ok=True);file.write_text(value);return file
-            write('/opt/k11c/modules/6.18.39-haos/npu/bundle.json',
-                  Path('/opt/k11c/modules/6.18.39-haos/npu/bundle.json').read_text())
+            write(BUNDLE_PATH, Path(BUNDLE_PATH).read_text())
             if case == 'manifest_kernel':
-                manifest = path('/opt/k11c/modules/6.18.39-haos/npu/bundle.json')
-                data = json.loads(manifest.read_text()); data['kernel_release'] = '6.18.52-haos'
+                manifest = path(BUNDLE_PATH)
+                data = json.loads(manifest.read_text()); data['kernel_release'] = '0.0.0-wrong'
                 manifest.write_text(json.dumps(data))
             npu=path('/sys/bus/platform/devices/fde40000.npu'); npu.mkdir(parents=True)
             driver=path('/sys/bus/platform/drivers/RKNPU');driver.mkdir(parents=True)
             (npu/'driver').symlink_to(driver)
-            write('/sys/module/rknpu/srcversion', 'OLD' if case=='module' else 'CD8FDCD74670016E17E2BFD')
+            write('/sys/module/rknpu/srcversion', 'OLD' if case=='module' else BUNDLE['modules']['rknpu']['srcversion'])
             write('/sys/class/regulator/regulator.1/name', 'vdd_npu')
             write('/sys/class/regulator/regulator.1/microvolts', '500000' if case=='voltage' else '900000')
             write('/sys/bus/platform/devices/fde40000.npu/devfreq/fde40000.npu/cur_freq', '400000000' if case=='clock' else '198000000')
@@ -191,7 +193,7 @@ class Tests(unittest.TestCase):
                     return SimpleNamespace(st_mode=stat.S_IFCHR|0o600,
                                            st_rdev=os.makedev(1 if case=='major' else 226,minor))
                 return real_stat(p,*args,**kw)
-            identity=SimpleNamespace(release='6.19' if case=='kernel' else '6.18.39-haos')
+            identity=SimpleNamespace(release='0.0.0-unsupported' if case=='kernel' else KERNEL)
             if case.startswith('vendor_'):
                 import shutil
                 shutil.rmtree(path('/device-tree/npu-opp-table'))
@@ -221,7 +223,7 @@ class Tests(unittest.TestCase):
                 write('/sys/bus/platform/devices/fde40000.npu/devfreq/fde40000.npu/available_frequencies',
                       '200000000 297000000 400000000 600000000 700000000 800000000 900000000')
                 write('/sys/module/k11c_rk3568_otp/version','r22.1')
-                write('/sys/module/k11c_rk3568_otp/srcversion','17ADBE45E3464BE801709BF')
+                write('/sys/module/k11c_rk3568_otp/srcversion',BUNDLE['modules']['k11c_rk3568_otp']['srcversion'])
                 d=path('/sys/bus/platform/drivers/k11c-rk3568-otp');d.mkdir(parents=True)
                 (d/'module').symlink_to(path('/sys/module/k11c_rk3568_otp'))
                 o=path('/sys/bus/platform/devices/fe38c000.otp');o.mkdir(parents=True)
@@ -332,7 +334,7 @@ def main():
         module.__dict__.update(original)
         assert not result.wasSuccessful(),'Missed mutation: '+old
         print('MUTATION_DETECTED '+old)
-    print('APP_API_LOCAL_PASS tests=7 mutations=%d hardware=NOT_TESTED' % len(mutations))
+    print('APP_API_LOCAL_PASS kernel=%s tests=7 mutations=%d hardware=NOT_TESTED' % (KERNEL, len(mutations)))
 
 
 if __name__=='__main__':main()
