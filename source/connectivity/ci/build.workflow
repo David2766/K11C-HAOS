@@ -81,11 +81,14 @@ jobs:
         if: steps.plan.outputs.needed == 'true'
       - name: Test release transaction and failure invariants
         if: steps.plan.outputs.needed == 'true'
-        run: python3 source/connectivity/ci/test-release.py
+        run: |
+          python3 source/connectivity/ci/test-release.py
+          python3 source/connectivity/ci/test-build-cache.py
       - name: Prepare every supported kernel and build tested ARM64 image
         if: steps.plan.outputs.needed == 'true'
         run: |
-          python3 source/connectivity/ci/pipeline.py --prepare-supported --vendor-tree "$GITHUB_WORKSPACE/source/connectivity/vendor" --output "$K11C_WORK/result" --image "local/k11c-connectivity:ci-$GITHUB_RUN_ID" --release-plan "$K11C_WORK/plan.json"
+          K11C_CACHE_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-buildcache"
+          python3 source/connectivity/ci/pipeline.py --prepare-supported --vendor-tree "$GITHUB_WORKSPACE/source/connectivity/vendor" --output "$K11C_WORK/result" --image "local/k11c-connectivity:ci-$GITHUB_RUN_ID" --release-plan "$K11C_WORK/plan.json" --cache-dir "$K11C_WORK/build-cache" --cache-registry "$K11C_CACHE_IMAGE"
       - name: Publish exact tested image then update catalog
         if: steps.plan.outputs.needed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish)
         env:

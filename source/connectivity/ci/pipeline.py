@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import build_cache
 
 SOURCE = Path(__file__).resolve().parents[1]
 APP_SOURCE = SOURCE / 'app' if (SOURCE / 'app').is_dir() else SOURCE.parents[1] / 'k11c_connectivity'
@@ -50,6 +51,85 @@ def discard_prepared_tree(output, tree):
     shutil.rmtree(tree)
 
 
+def tree_record(tree):
+    kernels = [k for k in (tree / 'output/build').glob('linux-*') if (k / '.config').is_file()]
+    if len(kernels) != 1:
+        raise ValueError('Expected exactly one configured kernel in ' + str(tree))
+    kernel = kernels[0]
+    release = subprocess.check_output(['make', '-s', '-C', str(kernel), 'ARCH=arm64', 'kernelrelease'], text=True).strip()
+    return dict(kernel_release=release, kernel_config_sha256=sha(kernel / '.config'),
+                module_symvers_sha256=sha(kernel / 'Module.symvers'),
+                haos_commit=subprocess.check_output(['git', '-C', str(tree), 'rev-parse', 'HEAD'], text=True).strip(),
+                haos_release=subprocess.check_output(['git', '-C', str(tree), 'describe', '--tags', '--exact-match', 'HEAD'], text=True).strip())
+
+
+def build_modules(args, app, out, plan, log):
+    """Same production path for CI and local tests; cache hits never bypass tests."""
+    cache = build_cache.Cache(args.cache_dir, args.cache_registry) if args.cache_dir else None
+    vendor = args.vendor_tree.resolve()
+    if not (vendor / 'drivers/skw6621s').is_dir():
+        vendor = vendor / 'external/rkwifibt'
+    inputs = build_cache.inputs_digest(SOURCE, app, vendor) if cache else None
+    supplied = [(tree.resolve(), tree_record(tree.resolve())) for tree in (args.haos_tree or [])]
+    requests = [(r['haos_release'], r['haos_commit'], tree, r) for tree, r in supplied]
+    if not supplied:
+        requests = [(release, commit, None, None) for release, commit in plan['haos'].items()]
+    provenance = []
+    counts = dict(module_hits=0, sdk_hits=0, cold_preparations=0, module_builds=0)
+    for release, commit, supplied_tree, supplied_record in requests:
+        if not re.fullmatch(r'[0-9]+\.[0-9]+', release):
+            raise ValueError('Invalid planned HAOS release')
+        if plan and plan['haos'].get(release) != commit:
+            raise ValueError('HAOS checkout differs from release plan')
+        sdk = build_cache.sdk_descriptor(commit)
+        modules = build_cache.module_descriptor(sdk, inputs) if cache else None
+        cached = build_cache.restore_modules(cache, modules, release, commit, app / 'modules') if cache else None
+        if cached is not None:
+            if supplied_record and cached != supplied_record:
+                raise ValueError('Supplied kernel differs from cached ABI inputs')
+            previous = next((r for r in provenance if r['kernel_release'] == cached['kernel_release']), None)
+            if previous and any(previous[k] != cached[k] for k in ('kernel_config_sha256', 'module_symvers_sha256')):
+                raise ValueError('Cached HAOS releases disagree about the same kernel ABI')
+            provenance.append(cached)
+            counts['module_hits'] += 1
+            print('MODULE_CACHE_HIT haos=' + release + ' (no kernel/toolchain/driver compilation)', flush=True)
+            continue
+        tree = supplied_tree or out / 'prepared-haos' / release
+        record = supplied_record
+        if record is None and cache:
+            record = build_cache.restore_sdk(cache, sdk, release, commit, tree)
+            if record:
+                counts['sdk_hits'] += 1
+                print('SDK_CACHE_HIT haos=' + release + ' (external modules only)', flush=True)
+        if record is None:
+            tree.parent.mkdir(parents=True, exist_ok=True)
+            run(['bash', SOURCE / 'ci/prepare-haos.sh', release, tree], log)
+            record = tree_record(tree)
+            counts['cold_preparations'] += 1
+        build_cache.valid_record(record, release, commit)
+        previous = next((r for r in provenance if r['kernel_release'] == record['kernel_release']), None)
+        if previous:
+            if any(previous[k] != record[k] for k in ('kernel_config_sha256', 'module_symvers_sha256')):
+                raise ValueError('Different ABI inputs share a kernel release: ' + record['kernel_release'])
+        else:
+            run(['bash', SOURCE / 'scripts/build-driver-bundle.sh', '--haos-tree', tree,
+                 '--vendor-tree', vendor, '--app-dir', app, '--work-root', out], log)
+            run(['bash', SOURCE / 'scripts/build-npu-bundle.sh', tree, app, out], log)
+            counts['module_builds'] += 1
+        provenance.append(record)
+        check_candidate(app)
+        if cache:
+            cache.save(sdk, record, tree, sdk=True)
+            cache.save(modules, record, app / 'modules' / record['kernel_release'])
+            # Persist reusable build work even if a later App test/publication
+            # fails. These are not user App releases, which still require PASS.
+            cache.push(sdk)
+            cache.push(modules)
+        if supplied_tree is None:
+            discard_prepared_tree(out, tree)
+    return provenance, counts
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     preparation = p.add_mutually_exclusive_group(required=True)
@@ -60,7 +140,11 @@ def main():
     p.add_argument('--inputs', type=Path, help='Offline inputs restored by CI; not needed for local source tree')
     p.add_argument('--image', default='local/k11c-connectivity:ci')
     p.add_argument('--release-plan', type=Path, help='Verified repository release plan; still no publication here')
+    p.add_argument('--cache-dir', type=Path, help='Content-addressed local build cache; never contains credentials')
+    p.add_argument('--cache-registry', help='Optional private GHCR build-cache package, separate from App releases')
     args = p.parse_args()
+    if args.cache_registry and not args.cache_dir:
+        p.error('--cache-registry requires --cache-dir')
     if not args.image.startswith('local/') or any(c.isspace() for c in args.image):
         raise ValueError('Only a local/ image tag is allowed here; publishing is separate')
     out = args.output.resolve()
@@ -83,50 +167,10 @@ def main():
     if args.inputs:
         for name in ('firmware', 'inference-assets', 'parser-assets', 'ffmpeg-assets'):
             shutil.copytree(args.inputs / name, app / name, dirs_exist_ok=True)
-    # Only explicitly supplied HAOS trees enter the candidate. No stale unrebuilt
-    # modules from a source checkout, test bundle, or previous build are carried.
+    # No unchecked modules from the source checkout enter the candidate.
+    # Reused builds must match the exact recipe, official commit and driver hash.
     (app / 'modules').mkdir()
-    provenance = []
-
-    def build_trees():
-        if args.haos_tree:
-            yield from args.haos_tree
-            return
-        parent = out / 'prepared-haos'
-        parent.mkdir()
-        for release in plan['haos']:
-            if not re.fullmatch(r'[0-9]+\.[0-9]+', release):
-                raise ValueError('Invalid planned HAOS release')
-            tree = parent / release
-            run(['bash', SOURCE / 'ci/prepare-haos.sh', release, tree], log)
-            yield tree
-            # Only the just-created CI build tree is removed, after its modules
-            # and provenance have been preserved. Supplied local trees are kept.
-            discard_prepared_tree(out, tree)
-
-    for tree in build_trees():
-        tree = tree.resolve()
-        kernels = [k for k in (tree / 'output/build').glob('linux-*') if (k / '.config').is_file()]
-        if len(kernels) != 1:
-            raise ValueError('Expected exactly one configured kernel in ' + str(tree))
-        kernel = kernels[0]
-        release = subprocess.check_output(['make', '-s', '-C', str(kernel), 'ARCH=arm64', 'kernelrelease'], text=True).strip()
-        record = dict(kernel_release=release, kernel_config_sha256=sha(kernel / '.config'),
-                      module_symvers_sha256=sha(kernel / 'Module.symvers'),
-                      haos_commit=subprocess.check_output(['git', '-C', str(tree), 'rev-parse', 'HEAD'], text=True).strip(),
-                      haos_release=subprocess.check_output(['git', '-C', str(tree), 'describe', '--tags', '--exact-match', 'HEAD'], text=True).strip())
-        if plan and plan['haos'].get(record['haos_release']) != record['haos_commit']:
-            raise ValueError('HAOS checkout differs from release plan')
-        previous = next((r for r in provenance if r['kernel_release'] == release), None)
-        if previous:
-            if any(previous[k] != record[k] for k in ('kernel_config_sha256', 'module_symvers_sha256')):
-                raise ValueError('Different ABI inputs share a kernel release: ' + release)
-            provenance.append(record)
-            continue
-        run(['bash', SOURCE / 'scripts/build-driver-bundle.sh', '--haos-tree', tree,
-             '--vendor-tree', args.vendor_tree, '--app-dir', app, '--work-root', out], log)
-        run(['bash', SOURCE / 'scripts/build-npu-bundle.sh', tree, app, out], log)
-        provenance.append(record)
+    provenance, cache_counts = build_modules(args, app, out, plan, log)
     kernels = check_candidate(app)
     if plan and {r['haos_release']: r['haos_commit'] for r in provenance} != plan['haos']:
         raise ValueError('Release build omitted a supported HAOS version')
@@ -161,7 +205,7 @@ def main():
     result = dict(schema=1, status='LOCAL_CI_PASS', hardware_tested=False, published=False,
                   app_version=version, image_id=info['Id'], image=args.image, kernels=kernels,
                   inputs=provenance, package_manifest_sha256=sha(out / 'package-manifest.json'),
-                  completed_epoch=int(time.time()))
+                  completed_epoch=int(time.time()), build_cache=cache_counts)
     if plan:
         result['release_plan_sha256'] = hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

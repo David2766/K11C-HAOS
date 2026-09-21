@@ -13,11 +13,13 @@ dispatch, and daily at 03:17 UTC (11:17 Hong Kong). It:
 1. Resolves official stable HAOS tags to commits and hashes the actual source inputs.
 2. Skips inputs already published successfully. Includes HAOS 18.2 plus every
    previously published supported release and the new target (no silent retirement).
-3. Builds the official Generic AArch64 kernel/toolchain and all five external
-   modules for each distinct kernel ABI; never builds/flashes an OS or YAML ROM.
-   CI prepares kernels sequentially, retains the built modules/provenance, then
-   removes only that newly created temporary kernel tree before the next one.
-   User-supplied local build trees are never removed. This limits runner disk use.
+3. Reuses exact-input build results from a separate private GHCR build cache.
+   App-only changes reuse all five external modules without kernel compilation.
+   Driver changes reuse the prepared toolchain/kernel and rebuild only modules.
+   Only a missing new kernel SDK requires the full official Generic AArch64
+   preparation. CI works sequentially and removes only its temporary extracted
+   tree afterwards. User-supplied local build trees are never removed.
+   It never builds/flashes an OS or YAML ROM.
    The disposable GitHub Linux runner also removes its unused preinstalled
    Android/.NET SDKs to make room for the full configured kernel. This cleanup
    is guarded to GitHub-hosted runners and is not run on a local PC or board.
@@ -37,6 +39,39 @@ anonymous pull does not advertise an update. Next scheduled/manual run replans.
 The image is in GHCR; Actions keeps only small plan/result/manifest/log reports
 for seven days. No GitHub image.tar. Local Docker images can still be archived
 manually using `docker image save` with the tested image ID from result.json.
+
+## Build reuse and first-run cost
+
+`ghcr.io/<owner>/<repository>-buildcache` is a separate package, NOT a Supervisor
+App or a second source repository. It can stay Private; the same workflow token
+pushes and reads it. Its `sdk-<hash>` / `modules-<hash>` tags are immutable build
+inputs. No cache binaries are committed to Git or uploaded as Actions artifacts.
+They persist in GHCR rather than relying on an expiring Actions cache.
+
+SDK identity includes the official HAOS commit (kernel, patches, configuration,
+toolchain definitions), preparation recipe and host ABI. Module identity adds
+the exact vendor source, driver patches, NPU/OTP source and build scripts. App
+version, Python service and documentation changes do not invalidate modules.
+The stored manifest checks the payload SHA-256, kernel configuration and
+Module.symvers provenance. A different input misses the cache; corrupt or
+mislabelled content is rejected. Every final App still runs all existing tests.
+
+The SDK contains toolchain files and configured kernel source/generated headers,
+not bulk kernel objects or OS images. Source/license files are retained. Module
+changes compile against a relocated SDK, not an unverified system compiler.
+Successful per-kernel build work is saved even if a later App test or publication
+fails; this is NOT acceptance or publication of that failed App.
+
+The FIRST run after introducing this cache still needs to populate missing SDKs.
+Existing pre-cache CI runs cannot magically provide a cache they never saved.
+Subsequent App-only runs log `MODULE_CACHE_HIT`; driver rebuilds log
+`SDK_CACHE_HIT`. result.json reports hits, module builds and cold preparations.
+Deleting the build-cache package makes the next affected run cold again. It does
+not invalidate already published user App images.
+
+An already running old workflow uses its original revision: cancel it in Actions
+if you do not want it to finish, then push this update. No local edit can change
+an in-progress GitHub job. Always pull any bot catalog commit before exporting.
 
 ## First deployment (owner, once)
 
@@ -112,6 +147,9 @@ Local build uses `ci/pipeline.py --haos-tree ... --vendor-tree ... --output NEWD
 Use repeated --haos-tree for supported HAOS releases. `prepare-haos.sh RELEASE
 DIRECTORY` is resumable for that same official tag and uses directory-local
 download/compiler caches, not privileged /cache. Build only on Linux/WSL.
+Add `--cache-dir DIRECTORY` for reusable local entries. The CI adds
+`--cache-registry ghcr.io/<owner>/<repository>-buildcache`; local registry
+integration tests use loopback instead and never push to GitHub.
 
 `test-release.py` exercises publication logic and real disposable Git remotes;
 fault mutations must fail tests. Its optional integration mode uses an actual
