@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "version": "0.5.4",
-  "input_key": "8ab4fe6b602a1e80e40a3afca9dbf5b5e066494b5e8fc27920391fc80b1e5d3a",
-  "image_digest": "ghcr.io/david2766/k11c-haos-connectivity@sha256:9e4a16b8e336f70ef29f5ab8c21a02e4d6483f6136a2797fb0e58f9ff97de685",
-  "image_id": "sha256:f750bc88e298ea26ab252a7cb7215e46d9b91368865e18d0d3df3310d87da8b7",
-  "source_commit": "2f50788da71f0f062cef52f5791a2ac831175136",
+  "version": "0.5.5",
+  "input_key": "5d891aad9aa1b9cdcf1aef702371c10d23e8371a47ac1b4cefec183c2a3d34de",
+  "image_digest": "ghcr.io/david2766/k11c-haos-connectivity@sha256:be3e7787423849a424a9ee1b89cb360b4a06d058ad6c5fbb9e6fd5dafc0d3d6c",
+  "image_id": "sha256:3e7c1197b43b47076db141d49fbb80005c37e7eea34cebc635cc6412650a4641",
+  "source_commit": "73bd992e36e744c5b5adb4d30894097baa27dff5",
   "hardware_tested": false,
   "haos": {
     "18.2": {

@@ -1,5 +1,5 @@
 name: K11C Connectivity
-version: 0.5.4
+version: 0.5.5
 slug: k11c_connectivity
 description: K11C Wi-Fi, Bluetooth, and optional NPU detection API
 arch:
