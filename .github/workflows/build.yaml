@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - 'source/connectivity/**'
-      - 'k11c_connectivity/config.template.yaml'
+      - 'k11c_connectivity/app.template.yaml'
       - 'k11c_connectivity/Dockerfile'
       - 'k11c_connectivity/build/**'
       - 'k11c_connectivity/rootfs/**'
@@ -49,7 +49,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Verify repository build inputs
-        run: sha256sum --check --strict SHA256SUMS
+        run: |
+          sha256sum --check --strict SHA256SUMS
+          python3 source/connectivity/ci/test-store-layout.py --repo "$GITHUB_WORKSPACE"
       - name: Select official release
         env:
           REQUESTED_RELEASE: ${{ inputs.haos_release }}

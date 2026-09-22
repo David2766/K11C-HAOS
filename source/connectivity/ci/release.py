@@ -14,6 +14,7 @@ import re
 import subprocess
 import tempfile
 import yaml
+from store_layout import TEMPLATE, validate_store
 
 CATALOG = 'k11c_connectivity/config.yaml'
 STATE = 'k11c_connectivity/RELEASE.json'
@@ -122,7 +123,8 @@ def plan_release(repo, target, repository, registry, resolve=official_commit):
     run(['sha256sum', '--check', '--strict', 'SHA256SUMS'], cwd=repo)
     if run(['git', 'status', '--porcelain'], cwd=repo):
         raise ValueError('Commit reviewed source inputs before planning a release')
-    candidate = yaml.safe_load((repo / 'k11c_connectivity/config.template.yaml').read_text())
+    validate_store(repo)
+    candidate = yaml.safe_load((repo / TEMPLATE).read_text())
     public = yaml.safe_load((repo / CATALOG).read_text())
     previous = json.loads((repo / STATE).read_text()) if (repo / STATE).exists() else {}
     policy = json.loads((repo / 'source/connectivity/ci/support.json').read_text())
@@ -150,6 +152,7 @@ def plan_release(repo, target, repository, registry, resolve=official_commit):
 
 
 def verify_candidate(repo, plan, result_dir, registry):
+    validate_store(repo)
     if registry.image != plan['image']:
         raise ValueError('Registry differs from the release plan')
     result = json.loads((result_dir / 'result.json').read_text())
@@ -204,7 +207,7 @@ def publish(repo, plan, result_dir, registry, remote, branch, git_env=None):
     registry.push(result['image_id'], plan['version'])
     digest = registry.public_pull(plan['version'], result['image_id'])
     # No public catalog write before both push AND anonymous identity verification.
-    config = yaml.safe_load((repo / 'k11c_connectivity/config.template.yaml').read_text())
+    config = yaml.safe_load((repo / TEMPLATE).read_text())
     config.update(version=plan['version'], image=plan['image'])
     state = dict(schema=1, version=plan['version'], input_key=plan['input_key'],
                  image_digest=digest, image_id=result['image_id'],

@@ -367,7 +367,7 @@ for label, mutated, case in [
 config = yaml.safe_load((APP / 'config.yaml').read_text())
 source_config = Path(__file__).resolve().parents[1] / 'app/config.yaml'
 if not source_config.exists():
-    source_config = Path(__file__).resolve().parents[3] / 'k11c_connectivity/config.template.yaml'
+    source_config = Path(__file__).resolve().parents[3] / 'k11c_connectivity/app.template.yaml'
 declared_version = yaml.safe_load(source_config.read_text())['version']
 assert config['slug'] == 'k11c_connectivity'
 assert str(config['version']) == os.environ.get('K11C_TEST_VERSION', str(declared_version))

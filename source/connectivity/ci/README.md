@@ -5,6 +5,14 @@ reviewed development files into the existing K11C-HAOS checkout; it does not
 build, commit, push, delete unrelated files, or overwrite the public catalog.
 No second repository or external-input hosting is required.
 
+The CI candidate is `k11c_connectivity/app.template.yaml`. Do NOT rename it
+`config.template.yaml`: Supervisor discovers `**/config.*` with JSON/YAML
+suffixes, so that old name registers the same App twice and can hide the public
+version AND image. The exporter retires only its old manifest/checksum-verified
+template and removes its stale checksum entry, preserving the public catalog.
+Modified or non-owned old templates require review instead of silent deletion.
+Store discovery is checked before export writes and before CI build/publication.
+
 ## Automatic path
 
 `.github/workflows/build.yaml` runs on relevant source pushes to main, manual
@@ -93,6 +101,12 @@ git push origin main
 Review/resolve any existing local work before pull; do not reset it. On future
 exports, pull the bot's catalog commit first. The exporter preserves that catalog
 and release state. The initial push triggers the workflow automatically.
+
+For the template-name migration, stage BOTH the deletion of
+`k11c_connectivity/config.template.yaml` and addition of `app.template.yaml`
+(the `git add -- k11c_connectivity ...` above does this). After push, the HA
+App store refresh can discover the existing published image immediately; a new
+App image does not have to finish building to correct this catalog ambiguity.
 
 Repository Settings -> Actions must permit Actions and the workflow's
 `contents: write` / `packages: write`. No PAT is required for ordinary publishing;

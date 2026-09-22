@@ -78,7 +78,7 @@ class Tests(unittest.TestCase):
         R.run(['git', 'init', '-b', 'main'], cwd=self.repo)
         files = {
             R.CATALOG: 'name: Connectivity\nslug: k11c_connectivity\nversion: 0.2.3\n',
-            'k11c_connectivity/config.template.yaml': 'name: Connectivity\nslug: k11c_connectivity\nversion: 0.5.3\n',
+            'k11c_connectivity/app.template.yaml': 'name: Connectivity\nslug: k11c_connectivity\nversion: 0.5.3\n',
             'source/connectivity/ci/support.json': '{"schema":1,"minimum_haos":"18.2"}\n',
             '.github/workflows/build.yaml': (HERE / 'build.workflow').read_text(),
             'source/connectivity/example.py': 'print("driver source")\n',
@@ -196,6 +196,14 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError): self.publish()
         self.remote_unchanged()
 
+    def test_duplicate_store_config_rejected_before_plan(self):
+        path = self.repo / 'k11c_connectivity/config.template.yaml'
+        path.write_bytes((self.repo / R.TEMPLATE).read_bytes())
+        R.refresh_checksums(self.repo, [path.relative_to(self.repo).as_posix()])
+        commit(self.repo, 'regression: conflicting template')
+        with self.assertRaises(ValueError):
+            R.plan_release(self.repo, '18.3', 'test/k11c', self.reg, self.resolve)
+
     def test_push_failure_preserves_catalog(self):
         self.reg.fail = 'push'
         with self.assertRaises(RuntimeError): self.publish()
@@ -288,6 +296,7 @@ def main():
         ("['docker', '--config', directory, 'pull'", "['docker', 'pull'", 'test_anonymous_download_identity'),
         ("digest = registry.public_pull(plan['version'], result['image_id'])", "digest = 'unverified'", 'test_private_package_preserves_catalog_and_retry_uses_new_tag'),
         ("['git', 'push', remote, 'HEAD:refs/heads/' + branch]", "['git', 'push', '--force', remote, 'HEAD:refs/heads/' + branch]", 'test_concurrent_commit_not_overwritten'),
+        ('    validate_store(repo)\n    candidate =', '    candidate =', 'test_duplicate_store_config_rejected_before_plan'),
     ]
     for old, new, test in mutations:
         assert old in TEXT
@@ -298,7 +307,7 @@ def main():
         if result.wasSuccessful() or result.errors:
             raise AssertionError('Expected assertion failure for mutation: ' + old + repr(result.errors))
         print('MUTATION_DETECTED ' + old)
-    print('RELEASE_CONTRACT_PASS tests=13 mutations=9 external_publication=false')
+    print('RELEASE_CONTRACT_PASS tests=14 mutations=10 external_publication=false')
 
 
 if __name__ == '__main__':

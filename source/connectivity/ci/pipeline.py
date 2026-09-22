@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import build_cache
+from store_layout import validate_store
 
 SOURCE = Path(__file__).resolve().parents[1]
 APP_SOURCE = SOURCE / 'app' if (SOURCE / 'app').is_dir() else SOURCE.parents[1] / 'k11c_connectivity'
@@ -154,8 +155,9 @@ def main():
     log = out / 'build.log'
     app = out / 'app'
     shutil.copytree(APP_SOURCE, app, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'modules'))
-    if (app / 'config.template.yaml').exists():
-        (app / 'config.template.yaml').replace(app / 'config.yaml')
+    if (app / 'app.template.yaml').exists():
+        validate_store(APP_SOURCE.parent)
+        (app / 'app.template.yaml').replace(app / 'config.yaml')
     import yaml
     plan = json.loads(args.release_plan.read_text()) if args.release_plan else None
     if args.prepare_supported and not plan:

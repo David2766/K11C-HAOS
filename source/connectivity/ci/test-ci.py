@@ -99,7 +99,7 @@ class Tests(unittest.TestCase):
             self.assertFalse((root / 'outside').exists())
 
     def test_existing_repository_layout(self):
-        candidate = pipeline.APP_SOURCE / 'config.template.yaml'
+        candidate = pipeline.APP_SOURCE / 'app.template.yaml'
         if not candidate.exists():
             candidate = pipeline.APP_SOURCE / 'config.yaml'
         self.assertEqual(yaml.safe_load(candidate.read_text())['slug'], 'k11c_connectivity')
