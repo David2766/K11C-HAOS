@@ -1,3 +1,11 @@
+## 0.5.6
+
+HAOS: 18.2, 18.3
+
+Image: `ghcr.io/david2766/k11c-haos-connectivity@sha256:76604743be0a06fc8405ecd85a4945fa73977ac5dee69a551ea8c9f056b906dc`
+
+Automatic build/software verification passed. Hardware acceptance is not implied. Update Connectivity before HAOS; no live module replacement or OS reboot is performed.
+
 ## 0.5.5
 
 HAOS: 18.2, 18.3
