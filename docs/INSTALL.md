@@ -1,5 +1,9 @@
 # Install K11C HAOS
 
+For the current portable Windows installer, see [Installer](../installer/README.md)
+and [release notes](RELEASE.md). The SD-image procedure below is the earlier
+manual path. Do not apply its addresses to a bare official HAOS image.
+
 These instructions apply to the tested KickPi K11C V1.2 with 4 GB RAM and
 32 GB eMMC. Check the board revision and storage device before writing.
 
@@ -101,60 +105,57 @@ The following mapping was confirmed on the tested K11C V1.2:
 - `mmc1`: microSD
 - `mmc0`: eMMC, reported as 29.1 GiB
 
-Read `image.raw_sectors_hex` and `image.raw_bytes_hex` from the release
-manifest matching the image on the microSD card. Substitute those values for
-`SECTORS` and `BYTES`. Do not reuse values from another release.
+Do **not** use the old image-copy + `gpt repair` procedure. The tested U-Boot
+accepts two independently valid headers even when their disk GUIDs differ.
+An old Android backup GPT can survive at the end of eMMC. A successful
+`gpt verify` message alone does not establish that both copies agree.
 
-For the tested `k11c-haos-18.2-sd` image, the values are:
+Use the repository's `source/scripts/prepare-emmc-install.py` together
+with `source/scripts/gpt_image.py`. The helper reads the decompressed K11C `.img`
+and prints four blocks of image-specific U-Boot commands. It does not write
+the source image, contact the board, compile HAOS, or perform an installation.
+These commands explicitly write **both** GPTs using the image's disk GUID
+and identical partition arrays, then read back the image and backup GPT.
 
-```text
-SECTORS = 1d3828
-BYTES   = 3a705000
+Example on the development PC (replace the SHA value with `image.raw_sha256`
+from the matching release manifest):
+
+```powershell
+python .\source\scripts\prepare-emmc-install.py --image C:\K11C-inputs\k11c-haos-18.2-sd.img --sha256 RAW_SHA256_FROM_MANIFEST --target-sectors 61071360
 ```
 
-Stop autoboot at the U-Boot prompt. Confirm the source card, load only the
-release image area into RAM, and record its CRC:
+The tested eMMC contains exactly **61071360 sectors of 512 bytes**. Rounded
+`29.1 GiB` alone is not an exact capacity check. Confirm the sector count
+from the device before generating commands, for example with
+`cat /sys/class/block/mmcblk0/size` on the verified HAOS eMMC controller.
+Do not reuse this number for a different storage variant without checking it.
 
-```text
-mmc dev 1
-mmc info
-mmc part
-mmc read 40000000 0 SECTORS
-crc32 40000000 BYTES
-```
+Follow the printed blocks in order, checking all MMC return messages and
+each expected CRC before proceeding. Do not paste the whole report at once.
+The second block changes only RAM; the fourth **overwrites the destination**.
+Both final readback CRCs must match their expected values. Stop on any mismatch.
 
-Select eMMC and verify its identity and capacity before entering the write
-command:
-
-```text
-mmc dev 0
-mmc info
-mmc part
-```
-
-Only continue when `mmc0` is the expected 29.1 GiB eMMC:
-
-```text
-mmc write 40000000 0 SECTORS
-mmc read 40000000 0 SECTORS
-crc32 40000000 BYTES
-```
-
-The source and destination CRC values must match. Do not continue if they are
-different. Repair the backup GPT for the full eMMC capacity and inspect the
-result:
-
-```text
-gpt repair mmc 0
-gpt verify mmc 0
-mmc part
-```
+The command sequence is locally tested against disk-file simulation and the
+actual HAOS ARM64 first-boot partition expander. Hardware installation with
+this new sequence remains a separate acceptance test; do not reinstall a
+working board solely to test it. Existing installs use the GPT-only repair kit.
 
 **Do not boot or reset the board with the microSD card still inserted after
 the eMMC write completes.** Power the board off completely, disconnect power,
 remove the microSD card, and only then reconnect power and boot from eMMC. The
 first HAOS boot after installation must be from eMMC alone and can take about
 two minutes.
+
+After that first boot and automatic data expansion, run on the HAOS host shell:
+
+```sh
+sgdisk --print --verify /dev/mmcblk0
+```
+
+Require `No problems found.` in the report, not merely exit status zero.
+This is installation-time disk metadata handling. The official HAOS partitions
+and native OTA update path remain unchanged; the installation helper is not
+run for ordinary HAOS updates.
 
 Booting a full HAOS microSD image while an HAOS installation is also present
 on eMMC can make HAOS treat the eMMC data partition as an external data disk.

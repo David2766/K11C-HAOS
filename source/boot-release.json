@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "revision": "r24",
+  "uboot_commit": "88dc2788777babfd6322fa655df549a019aa1e69",
+  "source_date_epoch": 1790596800,
+  "build_timestamp": "2026-09-28 12:00:00 +0000",
+  "firmware": "u-boot-k11c-dfi-r24.bin",
+  "firmware_sha256": "8a98fbc73fa93eb106a1202cece0bcb3d05355c4f21cab5c151f5b3d900f6260",
+  "control_dtb_sha256": "9d3dc75205e931a79e2a217af3d784912632b93b6362d904aa1565bef1b591e3",
+  "sources": {
+    "scripts/build-k11c-uboot.sh": "c60a533fc01e10a9289a61d1c4d3152fafda1dabcbbd67de27dbd46af3267e3f",
+    "device-tree/linux/rk3566-kickpi-k11c.dts": "de9384a0bdbea6185ad17d6579cd37ab15e423fc860a2d468c4b4abdfb2a9fa0",
+    "device-tree/u-boot/rk3566-kickpi-k11c-u-boot.dtsi": "733143221e09a69d1805453a53bb2b7437785c8b1341e7cb34cea93a8958489a",
+    "u-boot/board/hardkernel/odroid_m1s/Makefile": "5a22df7ca11f41922001708f06353252ab07d3cb52508c78d27c5e6e04857e46",
+    "u-boot/board/hardkernel/odroid_m1s/k11c.c": "5d3e55c720ad69d796859333aee7e8f87cda38640d413b49a1529370a00f74a0"
+  },
+  "inputs": {
+    "ddr": {"name": "rk3566_ddr_1056MHz_v1.23.bin", "sha256": "20e4bb076847bd019fcdeb7bdc15bd249890f07ecc76e9937101f22e50950982"},
+    "bl31": {"name": "rk3568_bl31_v1.44.elf", "sha256": "65110f822fdbdd0163ce2dabc60591e7a8a0ffbc9471780e29eef0062f9ed7b6"},
+    "loader": {"name": "k11c-usb-loader-v1.23.114.bin", "sha256": "b0228bbe9d3be4ea13f399df58289a82b5dfe62d1f67d75512a9ddd2d9b25454"}
+  }
+}

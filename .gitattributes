@@ -6,4 +6,17 @@
 /source/connectivity/** -text
 /.github/workflows/build.yaml -text
 /docs/CONNECTIVITY-CI.md -text
+/source/device-tree/** -text
+/source/u-boot/** -text
+/source/boot-release.json -text
+/source/scripts/** -text
+/installer/** -text
+/tools/boot-fix/** -text
+/tools/check-r23.sh -text
+/docs/BUILD.md -text
+/docs/BUILD.ko.md -text
+/docs/RELEASE.md -text
+/docs/INSTALL.md -text
+/docs/INSTALL.ko.md -text
+/README.md -text
 # END K11C CONNECTIVITY CI

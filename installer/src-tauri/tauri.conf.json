@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "K11C Installer",
+  "version": "0.4.0",
+  "identifier": "io.k11c.installer",
+  "build": { "frontendDist": "../dist", "devUrl": "http://localhost:1420" },
+  "app": {
+    "windows": [{ "label":"main", "create":false, "title":"K11C Installer", "width":1180, "height":840, "minWidth":980, "minHeight":680, "backgroundColor":"#111416", "theme":"Dark" }],
+    "security": { "csp":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'" }
+  },
+  "bundle": { "active":false }
+}

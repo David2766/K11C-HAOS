@@ -25,4 +25,25 @@ __pycache__/
 /work/
 /inputs/
 *.tar
+!/source/boot-release.json
+!/source/device-tree/**
+!/source/u-boot/**
+!/source/scripts/build-release-uboot.py
+!/source/scripts/gpt_image.py
+!/source/scripts/prepare-emmc-install.py
+!/source/scripts/test_gpt_install.py
+!/installer/
+!/installer/**
+!/tools/boot-fix/**
+!/tools/check-r23.sh
+!/docs/RELEASE.md
+/installer/target/
+/installer/node_modules/
+/installer/dist/
+/installer/data/
+/installer/release/
+/installer/test-results/
+/installer/resources/
+/installer/src-tauri/gen/
+/installer/src-tauri/icons/
 # END K11C CONNECTIVITY CI

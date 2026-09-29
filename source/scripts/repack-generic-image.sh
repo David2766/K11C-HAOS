@@ -41,7 +41,7 @@ while (($#)); do
 	esac
 done
 
-for command in awk cp dd jq mktemp sfdisk sgdisk sha256sum stat truncate xz; do
+for command in awk cp dd jq mktemp python3 sfdisk sgdisk sha256sum stat truncate xz; do
 	command -v "$command" >/dev/null || fail "missing command: $command"
 done
 [[ -s "$INPUT" ]] || fail "input image is missing or empty: $INPUT"
@@ -72,6 +72,7 @@ fi
 (( $(stat -c %s "$SOURCE_IMAGE") % SECTOR_SIZE == 0 )) ||
 	fail "decompressed input size is not sector aligned"
 SOURCE_DUMP="$TMP_DIR/source.sfdisk"
+python3 "$SCRIPT_DIR/gpt_image.py" "$SOURCE_IMAGE" || fail "source GPT pair is invalid"
 SHIFTED_DUMP="$TMP_DIR/shifted.sfdisk"
 CANDIDATE="$TMP_DIR/candidate.img"
 REPORT="$TMP_DIR/manifest.txt"
@@ -106,7 +107,7 @@ dd if="$SOURCE_IMAGE" of="$CANDIDATE" bs="$COPY_BLOCK_SIZE" \
 dd if=/dev/zero of="$CANDIDATE" bs="$SECTOR_SIZE" seek="$SHIFT_SECTORS" \
 	count=34 conv=notrunc status=none
 sfdisk --force "$CANDIDATE" < "$SHIFTED_DUMP" >/dev/null
-sgdisk --verify "$CANDIDATE" >/dev/null 2>&1 || fail "rewritten GPT is invalid"
+python3 "$SCRIPT_DIR/gpt_image.py" --k11c "$CANDIDATE" || fail "rewritten GPT pair is invalid"
 
 dd if="$UBOOT" of="$CANDIDATE" bs="$SECTOR_SIZE" seek="$SHIM_SECTOR" \
 	conv=notrunc status=none

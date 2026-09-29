@@ -1,0 +1,11 @@
+/target/
+/node_modules/
+/dist/
+/release/
+/data/
+/resources/rockusb/
+/resources/loader/
+/resources/firmware/
+/src-tauri/gen/
+/src-tauri/icons/
+/test-results/

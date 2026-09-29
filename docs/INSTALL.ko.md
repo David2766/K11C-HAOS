@@ -1,5 +1,9 @@
 # K11C HAOS 설치
 
+현재 Windows 포터블 설치 도구는 [사용 안내](../installer/README.md)와
+[배포 구성](RELEASE.md)을 참고하세요. 아래 SD 이미지 절차는 기존 수동 방식입니다.
+여기서 사용하는 주소를 가공하지 않은 공식 HAOS 이미지에 그대로 적용하면 안 됩니다.
+
 이 안내는 4 GB RAM과 32 GB eMMC가 장착된 KickPi K11C V1.2에서 확인했습니다.
 이미지를 기록하기 전에 보드 리비전과 저장장치를 직접 확인하세요.
 
@@ -103,58 +107,54 @@ microSD에서 만든 설정은 복사되지 않습니다.
 - `mmc1`: microSD
 - `mmc0`: 29.1 GiB로 표시되는 eMMC
 
-microSD에 기록한 이미지와 같은 Release manifest에서
-`image.raw_sectors_hex`와 `image.raw_bytes_hex` 값을 확인합니다. 해당 값을
-각각 `SECTORS`와 `BYTES` 자리에 넣습니다. 다른 Release의 값을 재사용하면
-안 됩니다.
+기존의 **이미지 복사 후 `gpt repair`에 맡기는 절차는 사용하지 않습니다.**
+해당 U-Boot는 주·보조 헤더가 각각 유효하면 GUID가 달라도 성공을 반환합니다.
+그래서 디스크 끝의 기존 Android 보조 GPT가 남을 수 있으며,
+`gpt verify` 성공 메시지만으로 두 사본이 일치한다고 판단할 수 없습니다.
 
-확인한 `k11c-haos-18.2-sd` 이미지의 값은 다음과 같습니다.
+저장소의 `source/scripts/prepare-emmc-install.py`와 `source/scripts/gpt_image.py`를
+사용합니다. 도구는 압축을 푼 K11C `.img`를 읽고 이미지별 U-Boot 명령을
+네 단계로 출력합니다. 원본 이미지 수정, 보드 접속, HAOS 컴파일·설치는 하지 않습니다.
+출력된 명령은 이미지의 GUID와 같은 파티션 배열로 **주·보조 GPT를 모두 기록**하고,
+이미지 영역과 보조 GPT를 각각 다시 읽어 CRC를 확인합니다.
 
-```text
-SECTORS = 1d3828
-BYTES   = 3a705000
+개발 PC에서의 예시입니다. SHA 값은 해당 Release manifest의
+`image.raw_sha256`으로 바꿉니다.
+
+```powershell
+python .\source\scripts\prepare-emmc-install.py --image C:\K11C-inputs\k11c-haos-18.2-sd.img --sha256 RAW_SHA256_FROM_MANIFEST --target-sectors 61071360
 ```
 
-U-Boot 자동 부팅을 멈춥니다. 원본 microSD를 확인하고 Release 이미지 영역만
-RAM으로 읽은 뒤 CRC를 기록합니다.
+확인한 eMMC는 **512바이트 섹터 61071360개**입니다. `29.1 GiB`라는 반올림된
+표시만으로 정확한 용량을 정하지 않습니다. 예를 들어 HAOS에서 eMMC 장치가
+mmcblk0인지 확인한 뒤 `cat /sys/class/block/mmcblk0/size`로 확인할 수 있습니다.
+저장장치가 다른 제품에 이 숫자를 그대로 쓰면 안 됩니다.
 
-```text
-mmc dev 1
-mmc info
-mmc part
-mmc read 40000000 0 SECTORS
-crc32 40000000 BYTES
-```
+출력된 단계별로 MMC 명령 성공과 예상 CRC를 확인하며 진행합니다.
+보고서 전체를 한꺼번에 붙여넣지 않습니다. 2단계는 RAM만 바꾸고,
+4단계는 **대상 eMMC를 덮어씁니다.** 마지막 읽기 검증의 CRC 두 개가 모두
+일치해야 합니다. 명령 실패나 CRC 불일치가 있으면 멈춥니다.
 
-eMMC를 선택하고 쓰기 명령을 입력하기 전에 장치와 용량을 확인합니다.
-
-```text
-mmc dev 0
-mmc info
-mmc part
-```
-
-`mmc0`이 예상한 29.1 GiB eMMC일 때만 계속합니다.
-
-```text
-mmc write 40000000 0 SECTORS
-mmc read 40000000 0 SECTORS
-crc32 40000000 BYTES
-```
-
-원본과 기록 후 CRC가 같아야 합니다. 다르면 다음 단계로 진행하지 마세요.
-eMMC 전체 용량에 맞게 백업 GPT를 복구하고 결과를 확인합니다.
-
-```text
-gpt repair mmc 0
-gpt verify mmc 0
-mmc part
-```
+이 명령 순서는 로컬 디스크 파일 시뮬레이션과 실제 HAOS ARM64의 최초
+파티션 확장 프로그램으로 검증했습니다. 새 절차를 이용한 실기 설치는 별도
+인수 검증 대상입니다. 이를 위해 정상 사용 중인 보드를 재설치하지 않습니다.
+이미 설치된 보드는 GPT만 복구하는 도구를 사용합니다.
 
 **eMMC 기록을 마친 뒤 microSD가 꽂힌 상태로 부팅하거나 재시작하지 마세요.**
 보드의 전원을 완전히 끄고 전원 케이블을 분리한 다음 microSD를 제거하세요.
 그 뒤 전원을 다시 연결하여 반드시 eMMC만으로 처음 부팅해야 합니다. 설치 후
 HAOS 첫 부팅은 약 2분 걸릴 수 있습니다.
+
+첫 부팅과 자동 용량 확장 후 HAOS 호스트 셸에서 확인합니다.
+
+```sh
+sgdisk --print --verify /dev/mmcblk0
+```
+
+종료 코드 0만 보지 말고 보고서의 `No problems found.`를 확인합니다.
+이 작업은 **최초 설치 시 디스크 메타데이터 처리**입니다. 공식 HAOS 파티션과
+네이티브 OTA 경로는 그대로이며, 일반 HAOS 업데이트 때 설치 도구를 다시
+실행하지 않습니다.
 
 eMMC에도 HAOS가 설치된 상태에서 전체 HAOS microSD 이미지로 부팅하면 HAOS가
 eMMC 데이터 파티션을 외부 데이터 디스크로 판단할 수 있습니다. 이 경우

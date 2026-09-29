@@ -18,6 +18,8 @@
 		mmc0 = &sdmmc0;
 		mmc1 = &sdhci;
 		rtc0 = &hym8563;
+		/* The RK809 RTC child inherits this alias from its PMIC parent. */
+		rtc1 = &rk809;
 		serial0 = &uart2;
 	};
 
@@ -56,6 +58,50 @@
 			gpios = <&gpio0 RK_PD5 GPIO_ACTIVE_HIGH>;
 			linux,default-trigger = "heartbeat";
 		};
+	};
+
+	/* K11C V1.2: RK809 headphones, differential microphone and HT6872. */
+	rk809_sound: rk809-sound {
+		compatible = "simple-audio-card";
+		pinctrl-names = "default";
+		pinctrl-0 = <&hp_det>;
+		simple-audio-card,name = "Analog RK809";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <256>;
+		/* The stock card uses active-high jack detection despite HP_DET_L. */
+		simple-audio-card,hp-det-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_HIGH>;
+		simple-audio-card,aux-devs = <&speaker_amp>;
+		simple-audio-card,widgets =
+			"Headphone", "Headphones",
+			"Speaker", "Speaker",
+			"Microphone", "Mic Jack";
+		simple-audio-card,routing =
+			"Headphones", "HPOL",
+			"Headphones", "HPOR",
+			"Speaker Amp INL", "SPKO",
+			"Speaker", "Speaker Amp OUTL",
+			"MICL", "Mic Jack";
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s1_8ch>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&rk809>;
+			/* I2S1 shares TX/RX clocks: keep both hardware streams at 48 kHz. */
+			system-clock-frequency = <12288000>;
+			system-clock-fixed;
+		};
+	};
+
+	speaker_amp: audio-amplifier {
+		compatible = "simple-audio-amplifier";
+		pinctrl-names = "default";
+		pinctrl-0 = <&speaker_enable>;
+		/* HT6872 CTRL: low shuts down; high enables. Not an always-on hog. */
+		enable-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Speaker Amp";
+		VCC-supply = <&vcc5v0_sys>;
 	};
 
 	/* Fitted module: VS6621SR80; keep the SDIO wiring replaceable. */
@@ -166,6 +212,11 @@
 	cpu-supply = <&vdd_cpu>;
 };
 
+/* No Linux DMC consumer on this board; HAOS DFI lacks DDR3 counter support. */
+&dfi {
+	status = "disabled";
+};
+
 &gmac1 {
 	assigned-clocks = <&cru SCLK_GMAC1_RX_TX>, <&cru SCLK_GMAC1>;
 	assigned-clock-parents = <&cru SCLK_GMAC1_RGMII_SPEED>,
@@ -245,12 +296,17 @@
 	rk809: pmic@20 {
 		compatible = "rockchip,rk809";
 		reg = <0x20>;
+		#sound-dai-cells = <0>;
+		clocks = <&cru I2S1_MCLKOUT_TX>;
+		clock-names = "mclk";
+		assigned-clocks = <&cru I2S1_MCLKOUT_TX>;
+		assigned-clock-parents = <&cru CLK_I2S1_8CH_TX>;
 		#clock-cells = <1>;
 		clock-output-names = "rk809-clkout1", "rk809-clkout2";
 		interrupt-parent = <&gpio0>;
 		interrupts = <RK_PA3 IRQ_TYPE_LEVEL_LOW>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pmic_int>;
+		pinctrl-0 = <&pmic_int &i2s1m0_mclk>;
 		system-power-controller;
 		wakeup-source;
 
@@ -263,6 +319,10 @@
 		vcc7-supply = <&vcc3v3_sys>;
 		vcc8-supply = <&vcc3v3_sys>;
 		vcc9-supply = <&vcc3v3_sys>;
+
+		codec {
+			rockchip,mic-in-differential;
+		};
 
 		regulators {
 			vdd_logic: DCDC_REG1 {
@@ -464,6 +524,13 @@
 	};
 };
 
+/* The 30-pin header's stock I2C3 mode; UART3 uses these same pads. */
+&i2c3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3m0_xfer>;
+	status = "okay";
+};
+
 &i2c4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c4m1_xfer>;
@@ -475,6 +542,19 @@
 		#clock-cells = <0>;
 		clock-output-names = "hym8563";
 	};
+};
+
+/* Internal HDMI audio link. No external header pins are used. */
+&i2s0_8ch {
+	status = "okay";
+};
+
+/* RK809 is wired to I2S1 mode 0, not the Wi-Fi module's I2S2 pads. */
+&i2s1_8ch {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s1m0_sclktx &i2s1m0_lrcktx &i2s1m0_sdi0 &i2s1m0_sdo0>;
+	rockchip,trcm-sync-tx-only;
+	status = "okay";
 };
 
 &mdio1 {
@@ -490,6 +570,16 @@
 };
 
 &pinctrl {
+	audio {
+		hp_det: hp-det {
+			rockchip,pins = <4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		speaker_enable: speaker-enable {
+			rockchip,pins = <3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
 	leds {
 		work_led_pin: work-led-pin {
 			rockchip,pins = <0 RK_PD5 RK_FUNC_GPIO &pcfg_pull_none>;
@@ -613,6 +703,19 @@
 	status = "okay";
 };
 
+/* Dedicated UART modes on the 30-pin header, as in the vendor DTS. */
+&uart7 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart7m2_xfer>;
+	status = "okay";
+};
+
+&uart9 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart9m2_xfer>;
+	status = "okay";
+};
+
 &usb_host0_ehci {
 	status = "okay";
 };
@@ -682,3 +785,183 @@
 		remote-endpoint = <&hdmi_in_vp0>;
 	};
 };
+
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// K11C V1.2 bring-up only: vendor resources, no IOMMU, one low-frequency OPP.
+#include <dt-bindings/clock/rk3568-cru.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/power/rk3568-power.h>
+
+/ {
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		k11c_npu_cma: npu-dma-pool {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0 0x08000000>;
+			alignment = <0 0x00400000>;
+			/* Let Linux allocate 128 MiB within 256 MiB .. 3.5 GiB. */
+			alloc-ranges = <0 0x10000000 0 0xd0000000>;
+		};
+	};
+
+	k11c_npu_opp: npu-opp-table {
+		compatible = [6f 70 65 72 61 74 69 6e 67 2d 70 6f 69 6e 74 73 2d 76 32 00];
+		mbist-vmin = [00 0c 96 a8 00 0d bb a0 00 0e 7e f0];
+		nvmem-cells = [00 00 02 68 00 00 02 69 00 00 02 6a 00 00 02 6b 00 00 02 6c 00 00 02 6d];
+		nvmem-cell-names = [6c 65 61 6b 61 67 65 00 70 76 74 6d 00 6d 62 69 73 74 2d 76 6d 69 6e 00 6f 70 70 2d 69 6e 66 6f 00 73 70 65 63 69 66 69 63 61 74 69 6f 6e 5f 73 65 72 69 61 6c 5f 6e 75 6d 62 65 72 00 72 65 6d 61 72 6b 5f 73 70 65 63 5f 73 65 72 69 61 6c 5f 6e 75 6d 62 65 72 00];
+		rockchip,supported-hw;
+		rockchip,max-volt = [00 0f 42 40];
+		rockchip,temp-hysteresis = [00 00 13 88];
+		rockchip,low-temp = [00 00 00 00];
+		rockchip,low-temp-adjust-volt = [00 00 00 00 00 00 03 e8 00 00 c3 50];
+		rockchip,pvtm-voltage-sel = [00 00 00 00 00 01 48 20 00 00 00 00 00 01 48 21 00 01 53 d8 00 00 00 01 00 01 53 d9 00 01 63 78 00 00 00 02 00 01 63 79 00 01 86 a0 00 00 00 03];
+		rockchip,pvtm-ch = [00 00 00 00 00 00 00 05];
+		phandle = [00 00 02 66];
+		opp-200000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 0b eb c2 00];
+			opp-microvolt = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+		};
+		opp-300000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 11 b3 dc 40];
+			opp-microvolt = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+		};
+		opp-400000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 17 d7 84 00];
+			opp-microvolt = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+		};
+		opp-600000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 23 c3 46 00];
+			opp-microvolt = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+		};
+		opp-700000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 29 b9 27 00];
+			opp-microvolt = [00 0d 59 f8 00 0d 59 f8 00 0f 42 40];
+			opp-microvolt-L0 = [00 0d 59 f8 00 0d 59 f8 00 0f 42 40];
+			opp-microvolt-L1 = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+			opp-microvolt-L2 = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+			opp-microvolt-L3 = [00 0c f8 50 00 0c f8 50 00 0f 42 40];
+		};
+		opp-800000000 {
+			opp-supported-hw = [00 00 00 fb 00 00 ff ff];
+			opp-hz = [00 00 00 00 2f af 08 00];
+			opp-microvolt = [00 0e 1d 48 00 0e 1d 48 00 0f 42 40];
+			opp-microvolt-L0 = [00 0e 1d 48 00 0e 1d 48 00 0f 42 40];
+			opp-microvolt-L1 = [00 0d bb a0 00 0d bb a0 00 0f 42 40];
+			opp-microvolt-L2 = [00 0d 59 f8 00 0d 59 f8 00 0f 42 40];
+			opp-microvolt-L3 = [00 0d 59 f8 00 0d 59 f8 00 0f 42 40];
+		};
+		opp-900000000 {
+			opp-supported-hw = [00 00 00 f9 00 00 ff ff];
+			opp-hz = [00 00 00 00 35 a4 e9 00];
+			opp-microvolt = [00 0e e0 98 00 0e e0 98 00 0f 42 40];
+			opp-microvolt-L0 = [00 0e e0 98 00 0e e0 98 00 0f 42 40];
+			opp-microvolt-L1 = [00 0e 7e f0 00 0e 7e f0 00 0f 42 40];
+			opp-microvolt-L2 = [00 0e 1d 48 00 0e 1d 48 00 0f 42 40];
+			opp-microvolt-L3 = [00 0d bb a0 00 0d bb a0 00 0f 42 40];
+		};
+		opp-1000000000 {
+			opp-supported-hw = [00 00 00 f9 00 00 ff ff];
+			opp-hz = [00 00 00 00 3b 9a ca 00];
+			opp-microvolt = [00 0f 42 40 00 0f 42 40 00 0f 42 40];
+			opp-microvolt-L0 = [00 0f 42 40 00 0f 42 40 00 0f 42 40];
+			opp-microvolt-L1 = [00 0e e0 98 00 0e e0 98 00 0f 42 40];
+			opp-microvolt-L2 = [00 0e 7e f0 00 0e 7e f0 00 0f 42 40];
+			opp-microvolt-L3 = [00 0e 1d 48 00 0e 1d 48 00 0f 42 40];
+			status = [64 69 73 61 62 6c 65 64 00];
+		};
+		opp-j-600000000 {
+			opp-supported-hw = [00 00 00 04 00 00 ff ff];
+			opp-hz = [00 00 00 00 23 c3 46 00];
+			opp-microvolt = [00 0d bb a0 00 0d bb a0 00 0f 42 40];
+		};
+		opp-m-900000000 {
+			opp-supported-hw = [00 00 00 02 00 00 ff ff];
+			opp-hz = [00 00 00 00 35 a4 e9 00];
+			opp-microvolt = [00 0e 1d 48 00 0e 1d 48 00 0f 42 40];
+		};
+	};
+
+	npu@fde40000 {
+		compatible = "rockchip,rk3568-rknpu", "rockchip,rknpu";
+		reg = <0 0xfde40000 0 0x10000>;
+		interrupts = <GIC_SPI 151 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "npu_irq";
+		/* Stock K11C SCMI clock IDs: CPU=0, GPU=1, NPU=2. */
+		clocks = <&scmi_clk 2>, <&cru CLK_NPU>,
+			 <&cru ACLK_NPU>, <&cru HCLK_NPU>;
+		clock-names = "scmi_clk", "clk", "aclk", "hclk";
+		assigned-clocks = <&cru CLK_NPU>;
+		assigned-clock-rates = <600000000>;
+		resets = <&cru SRST_A_NPU>, <&cru SRST_H_NPU>;
+		reset-names = "srst_a", "srst_h";
+		power-domains = <&power RK3568_PD_NPU>;
+		operating-points-v2 = <&k11c_npu_opp>;
+		rknpu-supply = <&vdd_npu>;
+		memory-region = <&k11c_npu_cma>;
+		/* Deliberately no iommus: use the driver's DMA32/CMA backend. */
+		status = "okay";
+	};
+};
+
+&power {
+	power-domain@6 {
+		reg = <RK3568_PD_NPU>;
+		clocks = <&cru ACLK_NPU_PRE>, <&cru HCLK_NPU_PRE>,
+			 <&cru PCLK_NPU_PRE>;
+		pm_qos = <&qos_npu>;
+		#power-domain-cells = <0>;
+	};
+};
+
+/ {
+	otp@fe38c000 {
+		compatible = [72 6f 63 6b 63 68 69 70 2c 72 6b 33 35 36 38 2d 6f 74 70 00];
+		reg = [00 00 00 00 fe 38 c0 00 00 00 00 00 00 00 40 00];
+		#address-cells = [00 00 00 01];
+		#size-cells = [00 00 00 01];
+		clocks = [00 00 00 0f 00 00 00 73 00 00 00 0f 00 00 00 72 00 00 00 0f 00 00 00 71 00 00 00 0f 00 00 01 81];
+		clock-names = [75 73 72 00 73 62 70 69 00 61 70 62 00 70 68 79 00];
+		resets = [00 00 00 0f 00 00 01 cf];
+		reset-names = [6f 74 70 5f 70 68 79 00];
+		npu-leakage@1c {
+			reg = [00 00 00 1c 00 00 00 01];
+			phandle = [00 00 02 68];
+		};
+		core-pvtm@2a {
+			reg = [00 00 00 2a 00 00 00 02];
+			phandle = [00 00 02 69];
+		};
+		mbist-vmin@9 {
+			reg = [00 00 00 09 00 00 00 01];
+			bits = [00 00 00 00 00 00 00 04];
+			phandle = [00 00 02 6a];
+		};
+		npu-opp-info@42 {
+			reg = [00 00 00 42 00 00 00 06];
+			phandle = [00 00 02 6b];
+		};
+		specification-serial-number@7 {
+			reg = [00 00 00 07 00 00 00 01];
+			bits = [00 00 00 00 00 00 00 05];
+			phandle = [00 00 02 6c];
+		};
+		remark-spec-serial-number@56 {
+			reg = [00 00 00 56 00 00 00 01];
+			bits = [00 00 00 00 00 00 00 05];
+			phandle = [00 00 02 6d];
+		};
+	};
+};
+&{/npu@fde40000} { k11c,vendor-policy = <1>; k11c,thermal-zone = <0x118>; };
+&vdd_npu { regulator-init-microvolt = <900000>; };
+&{/thermal-zones/cpu-thermal} { phandle = <0x118>; };

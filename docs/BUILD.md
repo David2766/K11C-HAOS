@@ -1,173 +1,61 @@
-# Build the K11C HAOS image
+# K11C build — U-Boot r24 / Installer 0.4.0
 
-This guide builds the ready-to-flash K11C image. It builds the K11C U-Boot,
-adds it in front of the official generic AArch64 HAOS image, and preserves all
-eight HAOS partitions byte-for-byte.
+Use the official generic-aarch64 HAOS image. No HAOS or kernel ROM rebuild is
+required. Connectivity external modules are built by the separate
+[Connectivity CI](CONNECTIVITY-CI.md). [한국어](BUILD.ko.md)
 
-It does **not** build the K11C Connectivity App, SeekWave kernel modules, or
-SeekWave firmware. See [CONNECTIVITY.md](CONNECTIVITY.md) for that separate
-build.
+## U-Boot r24
 
-Run the commands from the root of this repository in Ubuntu or WSL2. Keep the
-downloaded inputs and generated images outside the Git repository.
+The exported device trees are the complete inputs used for r24, including
+the vendor NPU overlay and stable phandles. They do not require the original
+diagnostic directories or temporary build tree.
 
-## 1. Install host packages
-
-The following package set covers the U-Boot build and the image validators on
-Ubuntu 24.04:
+On Ubuntu 24.04:
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  bc bison build-essential curl device-tree-compiler fdisk file flex \
-  gcc-aarch64-linux-gnu gdisk git jq libgnutls28-dev libncurses-dev \
-  libssl-dev mtools python3 python3-dev python3-pyelftools \
-  python3-setuptools swig uuid-dev xz-utils
+sudo apt-get install build-essential gcc-aarch64-linux-gnu bison flex swig python3-dev python3-setuptools python3-pyelftools python3-jsonschema device-tree-compiler libssl-dev libgnutls28-dev
+git clone https://github.com/u-boot/u-boot.git ../u-boot
+git -C ../u-boot checkout 88dc2788777babfd6322fa655df549a019aa1e69
+python3 source/scripts/build-release-uboot.py --check
+python3 source/scripts/build-release-uboot.py \
+  --uboot-tree ../u-boot \
+  --ddr-blob ../inputs/rk3566_ddr_1056MHz_v1.23.bin \
+  --bl31 ../inputs/rk3568_bl31_v1.44.elf \
+  --output ../build/u-boot-k11c-dfi-r24.bin
 ```
 
-## 2. Download the official HAOS image
+Supply the original Rockchip DDR/BL31 inputs with the digests in
+`source/boot-release.json`. The wrapper fixes release metadata and requires
+the rebuilt firmware and DTB to match the published hashes. Existing output
+files are not overwritten. The original upstream checkout must be clean.
+Original licensing remains applicable; see the repository notices.
 
-The tested input is the official generic AArch64 HAOS 18.2 image:
+## Portable Windows installer
 
-```text
-File:   haos_generic-aarch64-18.2.img.xz
-URL:    https://github.com/home-assistant/operating-system/releases/download/18.2/haos_generic-aarch64-18.2.img.xz
-SHA256: dae257b7b2ce3860f3ce187a85d27b3e9aaaebf55e6acb50f38115e7d7b783a1
+Install Node.js, Rust MSVC and Visual C++ Build Tools. Extract the existing
+0.4.0 portable ZIP outside the repository and point to its resources directory
+(with loader, firmware, rockusb and firmware/manifest.txt).
+
+```powershell
+cd installer
+$env:K11C_RELEASE_INPUTS = 'C:\K11C-inputs\resources'
+npm ci
+node scripts/build.mjs --check-inputs
+npm run build
+npm run package
 ```
 
-Download and verify it:
+The actual runtime constants authenticate build inputs; no private developer
+paths or SDK tree are used. Packaging verification requires a Windows PC with
+Rockusb already installed; it does not install a driver for testing.
+Physical USB writes and interrupted-install recovery require board acceptance.
+
+## Repair utilities
 
 ```bash
-mkdir -p ../k11c-build-inputs ../k11c-build-output
-curl -L \
-  -o ../k11c-build-inputs/haos_generic-aarch64-18.2.img.xz \
-  https://github.com/home-assistant/operating-system/releases/download/18.2/haos_generic-aarch64-18.2.img.xz
-echo 'dae257b7b2ce3860f3ce187a85d27b3e9aaaebf55e6acb50f38115e7d7b783a1  ../k11c-build-inputs/haos_generic-aarch64-18.2.img.xz' | sha256sum -c -
+python3 tools/boot-fix/test_boot_fix.py
+python3 tools/boot-fix/package.py --output ../build/k11c-boot-fix-r2.tar
 ```
 
-## 3. Prepare upstream U-Boot
-
-The build script accepts only a clean upstream U-Boot checkout at this exact
-commit:
-
-```text
-Version: U-Boot v2026.04
-Commit:  88dc2788777babfd6322fa655df549a019aa1e69
-Source:  https://source.denx.de/u-boot/u-boot.git
-```
-
-```bash
-git clone https://source.denx.de/u-boot/u-boot.git \
-  ../k11c-build-inputs/u-boot
-git -C ../k11c-build-inputs/u-boot checkout \
-  88dc2788777babfd6322fa655df549a019aa1e69
-test "$(git -C ../k11c-build-inputs/u-boot rev-parse HEAD)" = \
-  88dc2788777babfd6322fa655df549a019aa1e69
-test -z "$(git -C ../k11c-build-inputs/u-boot status --porcelain --untracked-files=all)"
-```
-
-Do not copy the K11C changes into this checkout. During the build,
-`source/scripts/build-k11c-uboot.sh` creates a temporary worktree and copies
-these repository files into it:
-
-- `source/device-tree/linux/rk3566-kickpi-k11c.dts`
-- `source/device-tree/u-boot/rk3566-kickpi-k11c-u-boot.dtsi`
-- `source/u-boot/board/hardkernel/odroid_m1s/Makefile`
-- `source/u-boot/board/hardkernel/odroid_m1s/k11c.c`
-
-The original U-Boot checkout remains unchanged.
-
-## 4. Obtain the Rockchip DDR and BL31 files
-
-Download the manufacturer source archive from the
-[manufacturer source folder](https://1drv.ms/f/c/106b4b0b39a75ee5/IgAyC7gbEYJTSbLqbvcl01nTAbTgoKx-YKAY90ieirpIKmA?e=ityIrU).
-The tested archive is located inside that share at:
-
-```text
-linux/sdk/20260515/rk356x-linux-2026051515.tar.gz
-MD5: 81812c6a8770f73b41fc191939e9345e
-Source tag: rk356x-linux-2026051515
-Source commit: 22a87c6c96feef811d103e04085b46b7d7ec4786
-```
-
-Extract it and use these exact files from the archive:
-
-```text
-rkbin/bin/rk35/rk3566_ddr_1056MHz_v1.23.bin
-SHA256: 20e4bb076847bd019fcdeb7bdc15bd249890f07ecc76e9937101f22e50950982
-
-rkbin/bin/rk35/rk3568_bl31_v1.44.elf
-SHA256: 65110f822fdbdd0163ce2dabc60591e7a8a0ffbc9471780e29eef0062f9ed7b6
-```
-
-Example:
-
-Save the downloaded archive as
-`../k11c-build-inputs/rk356x-linux-2026051515.tar.gz`, then run:
-
-```bash
-echo '81812c6a8770f73b41fc191939e9345e  ../k11c-build-inputs/rk356x-linux-2026051515.tar.gz' | md5sum -c -
-mkdir -p ../k11c-build-inputs/vendor-sdk
-tar -xf ../k11c-build-inputs/rk356x-linux-2026051515.tar.gz \
-  -C ../k11c-build-inputs/vendor-sdk
-
-DDR=$(find ../k11c-build-inputs/vendor-sdk -type f \
-  -path '*/rkbin/bin/rk35/rk3566_ddr_1056MHz_v1.23.bin' -print -quit)
-BL31=$(find ../k11c-build-inputs/vendor-sdk -type f \
-  -path '*/rkbin/bin/rk35/rk3568_bl31_v1.44.elf' -print -quit)
-test -n "$DDR" && test -n "$BL31"
-echo "20e4bb076847bd019fcdeb7bdc15bd249890f07ecc76e9937101f22e50950982  $DDR" | sha256sum -c -
-echo "65110f822fdbdd0163ce2dabc60591e7a8a0ffbc9471780e29eef0062f9ed7b6  $BL31" | sha256sum -c -
-```
-
-The last output must match the two SHA-256 values shown above. The image
-builder checks them again and stops on any mismatch.
-
-## 5. Build the image
-
-From the repository root:
-
-```bash
-DDR=$(find ../k11c-build-inputs/vendor-sdk -type f \
-  -path '*/rkbin/bin/rk35/rk3566_ddr_1056MHz_v1.23.bin' -print -quit)
-BL31=$(find ../k11c-build-inputs/vendor-sdk -type f \
-  -path '*/rkbin/bin/rk35/rk3568_bl31_v1.44.elf' -print -quit)
-
-bash source/scripts/build-k11c-image.sh \
-  --haos-image ../k11c-build-inputs/haos_generic-aarch64-18.2.img.xz \
-  --haos-sha256 dae257b7b2ce3860f3ce187a85d27b3e9aaaebf55e6acb50f38115e7d7b783a1 \
-  --uboot-tree ../k11c-build-inputs/u-boot \
-  --ddr-blob "$DDR" \
-  --bl31 "$BL31" \
-  --output-dir ../k11c-build-output
-```
-
-Use an empty output directory. The script refuses to replace an existing
-artifact.
-
-The script produces:
-
-- `k11c-haos-18.2-sd.img.xz`: ready-to-flash image
-- `k11c-haos-18.2-sd.img`: uncompressed local validation copy
-- `k11c-haos-18.2-sd.release.txt`: release and eMMC copy parameters
-- `k11c-haos-18.2-sd.img.manifest.txt`: partition validation results
-- `u-boot-rockchip-k11c-18.2.bin`: K11C U-Boot image
-- `u-boot-rockchip-k11c-18.2.bin.config`: U-Boot configuration
-- `u-boot-rockchip-k11c-18.2.bin.control.dtb`: U-Boot control DTB
-- `u-boot-rockchip-k11c-18.2.bin.manifest.txt`: U-Boot build manifest
-- `SHA256SUMS`, `THIRD_PARTY_NOTICES.md`, and
-  `ROCKCHIP_RKBIN_LICENSE.txt`
-
-Verify the completed output:
-
-```bash
-(cd ../k11c-build-output && sha256sum --check --strict SHA256SUMS)
-```
-
-The image build is complete only when the build and checksum verification both
-finish without an error. Flash `k11c-haos-18.2-sd.img.xz` as described in
-[INSTALL.md](INSTALL.md).
-
-The ready-to-flash image contains HAOS, K11C U-Boot, the K11C device tree, and
-the licensed Rockchip boot components. It does not contain SeekWave firmware
-or prebuilt SeekWave modules.
+Tests use disposable file-backed disks. Follow
+[the repair guide](../tools/boot-fix/README.md) before any board-side writes.

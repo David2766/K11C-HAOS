@@ -1,0 +1,38 @@
+/* Secondary text only: 115% of the previous sizes; titles and primary actions stay unchanged. */
+:root {
+  --aux-8: 9.2px;
+  --aux-9: 10.35px;
+  --aux-10: 11.5px;
+  --aux-11: 12.65px;
+  --aux-12: 13.8px;
+  --aux-13: 14.95px;
+}
+.brand small, .repo-note { font-size: var(--aux-8); }
+.nav-label, .eyebrow, .badge, .pill, .subtle-tag, .bottom-hint { font-size: var(--aux-9); }
+.aside-bottom p, .step, .section-heading > .muted, .source-card small,
+label, .repo-note span, .note p, .footer-actions > span,
+.wizard-number, .coming-soon, .wizard-position { font-size: var(--aux-10); }
+.aside-bottom, .device-card p, .status-line, .panel-top p, .fake-input,
+.note strong, .empty-feature p, .error p, .compact p, pre, summary,
+.history-row, .storage-summary span, .image-result p, .image-result dl,
+.review-path, .install-warning p { font-size: var(--aux-11); }
+p, header p, .body-note, .error strong, .setting-row, .connection-steps,
+.storage-summary, .file-placeholder, .review-list > div { font-size: var(--aux-12); }
+.modal p, .confirm-check { font-size: var(--aux-13); }
+
+.release-status { margin-top: 14px; }
+.advanced-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; margin-top: 20px; }
+.advanced-grid > .panel { margin: 0; min-width: 0; }
+.advanced-grid .panel-top { align-items: flex-start; }
+.advanced-grid .panel-top > svg { flex: none; }
+.advanced-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }
+@media(max-width:1050px) { .advanced-grid { grid-template-columns: 1fr; } }
+.write-modal { width: 560px; max-height: 90vh; overflow-y: auto; }
+.write-modal .path { display: block; font-size: var(--aux-11); }
+.write-modal label { margin-top: 20px; font-size: var(--aux-12); }
+.write-modal .modal-actions { margin-top: 22px; }
+.write-result { display: flex; gap: 16px; border-color: #3a7663; }
+.write-result > svg { color: #74dfc3; flex: none; }
+.write-result h3 { margin: 0 0 12px; }
+.write-result p { margin-top: 8px; }
+.advanced-grid select { width: 100%; }

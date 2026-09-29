@@ -35,7 +35,7 @@ while (($#)); do
 	esac
 done
 
-for command in cmp dd diff jq mtype sfdisk sgdisk sha256sum stat; do
+for command in cmp dd diff jq mtype python3 sfdisk sgdisk sha256sum stat; do
 	command -v "$command" >/dev/null || fail "missing command: $command"
 done
 for file in "$ORIGINAL" "$CANDIDATE" "$UBOOT"; do
@@ -92,7 +92,8 @@ jq -S \
 	}]' "$CANDIDATE_JSON" > "$CANDIDATE_LAYOUT"
 diff -u "$ORIGINAL_LAYOUT" "$CANDIDATE_LAYOUT" >/dev/null ||
 	fail "partition identity, size, order, or shifted start differs"
-sgdisk --verify "$CANDIDATE" >/dev/null 2>&1 || fail "candidate GPT verification failed"
+python3 "$(dirname "${BASH_SOURCE[0]}")/gpt_image.py" "$ORIGINAL" || fail "original GPT pair invalid"
+python3 "$(dirname "${BASH_SOURCE[0]}")/gpt_image.py" --k11c "$CANDIDATE" || fail "candidate GPT pair invalid"
 
 first_partition_start="$(jq -r '.partitiontable.partitions[0].start' "$CANDIDATE_JSON")"
 uboot_size="$(stat -c %s "$UBOOT")"

@@ -1,3 +1,18 @@
+<!-- K11C CURRENT RELEASE -->
+## Current releases / 현재 배포
+
+**U-Boot r24 · Installer 0.4.0** — [배포 구성](docs/RELEASE.md) ·
+[Build](docs/BUILD.md) · [빌드 안내](docs/BUILD.ko.md) · [설치 도구](installer/README.md)
+
+Use official generic-aarch64 HAOS images and native HAOS OS updates.
+Connectivity is updated separately through the App repository.
+The Installer is a pre-release pending physical USB-write acceptance.
+
+공식 HAOS 이미지와 네이티브 OS 업데이트를 유지합니다. Connectivity 앱은 별도
+앱 저장소에서 업데이트합니다. 설치 도구는 실물 USB 기록 검증 전 사전 배포입니다.
+아래 초기 안내의 HAOS 18.2 SD 이미지 방식은 기존 방식이며, 최신 배포는 위 링크를 참고하세요.
+<!-- END K11C CURRENT RELEASE -->
+
 # K11C HAOS
 
 Home Assistant OS support for the KickPi K11C V1.2.
