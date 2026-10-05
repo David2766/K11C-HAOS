@@ -1,6 +1,11 @@
 // Korean source keys; columns: Korean, English, Traditional Chinese, Spanish, Japanese.
 // Technical identifiers, paths and raw diagnostics are intentionally not translated.
 export const messages = [
+['백업 선택','Backup choice','選擇備份','Opciones de copia','バックアップの選択'],
+['백업 없이 진행','Continue without backup','不備份並繼續','Continuar sin copia','バックアップせずに続行'],
+['현재 OS와 데이터를 백업하지 않습니다.','The current OS and data will not be backed up.','不會備份目前的 OS 與資料。','No se guardará el sistema ni los datos actuales.','現在の OS とデータはバックアップしません。'],
+['설치·복원 시 기존 데이터가 삭제됩니다. 필요한 백업이 있는지 확인하세요.','Installation or restore replaces existing data. Make sure you have any backup you need.','安裝或還原會覆寫現有資料。請確認已備份需要的資料。','La instalación o restauración reemplaza los datos. Comprueba que tienes las copias necesarias.','インストール・復元で既存データを上書きします。必要なバックアップがあることを確認してください。'],
+['기록 전에 취소했습니다. eMMC 데이터는 변경되지 않았습니다.','Cancelled before writing. eMMC data was not changed.','已在寫入前取消。eMMC 資料未變更。','Cancelado antes de escribir. Los datos de eMMC no cambiaron.','書き込み前にキャンセルしました。eMMC データは変更されていません。'],
 ['제조사 이미지','Manufacturer image','原廠映像','Imagen del fabricante','メーカーのイメージ'],
 ['저장된 백업','Saved backup','已儲存的備份','Copia guardada','保存済みバックアップ'],
 ['복원할 이미지 종류','Restore source','還原來源','Origen de restauración','復元元'],

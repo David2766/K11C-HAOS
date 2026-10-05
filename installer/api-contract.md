@@ -49,10 +49,11 @@ UF/boot verification requires an actual K11C trial; fixture tests do not certify
 
 ## Archive and restore revision (current)
 
-The wizard now has five slides: operation, connection, FULL backup, input,
+The wizard now has five slides: operation, connection, backup choice, input,
 review. Install uses a prepared HAOS image; restore uses a verified FULL archive
 or sector-aligned full raw `.img`. Both reuse the wizard's verified FULL recovery
-backup rather than creating a second one. Advanced backup offers FULL, BOOT and
+backup rather than creating a second one, or explicitly skip recovery backup.
+Advanced backup offers FULL, BOOT and
 HAOS on a healthy K11C HAOS layout; other/unknown layouts permit FULL only.
 
 `backup_device(instanceId, kind)` writes a streaming lossless Zstandard archive under
@@ -67,13 +68,14 @@ heuristics or skipped sectors; compression reduces storage, not USB read work.
 `backup_select(locale?)` imports a `.k11cbackup` or registers a full raw `.img`
 selected by a native picker. Firmware packages RKFW/RKAF and Android sparse
 images are rejected. Raw imports are locked and hashed, not copied. Catalog
-listing checks bounded metadata; planning/execution recheck every payload byte.
+listing and planning check bounded metadata; execution verifies every payload byte
+once before any write, with the source handle locked through readback.
 Legacy boot backups remain selectable in Advanced only.
 RAW import receipts are also included in catalog listings, even when there is no
 managed `backup/` directory. Listing reads only the receipt and disk-image headers,
 labels rows as unverified, and disables missing/invalid files. Full payload hashes
-are rechecked against the original import ID before restore planning/execution.
-Selecting an archive already in the portable backup folder verifies and reuses it,
+are rechecked against the original import ID before restore execution.
+Selecting an archive already in the portable backup folder inspects metadata and reuses it,
 without copying it to a second file.
 
 `storage_plan` additionally accepts `recovery` (verified backup ID) and operation
@@ -83,8 +85,9 @@ production backup engine. Inspect returns disk OS classification and allowed
 backup kinds. The actual device must have full-read capability and matching
 capacity. Full restore replaces layouts; partial restore requires matching HAOS
 partition entries. Restore writes the saved bytes, never current release assets.
-Input files are locked throughout verification and execution. Full recovery is
-compared with current disk contents before writes; backups remain usable after
+Input files are locked throughout verification and execution. Existing FULL recovery
+metadata is checked without decompressing it or comparing the current full disk.
+New plans bind a bounded boot/GPT fingerprint; backups remain usable after
 USB reconnection. The one-use plan still binds the current USB instance/port.
 Writes and rereads are bounded by derived ranges. Full restore accepts the saved
 OS/GPT state, including a damaged table, rather than forcing HAOS validation.
@@ -96,7 +99,11 @@ backup, and returns `backup_path:null`. It verifies the selected source and save
 only a hash of the target boot/GPT state in the one-use plan, not a recovery copy.
 Execution rechecks that hash, device identity/port/capacity, source contents and
 write ranges, then requires the same explicit confirmation and full readback.
-The wizard, installation, U-Boot and GPT repair retain their existing backup policy.
+The wizard accepts `storage_plan.skipBackup=true`, mutually exclusive with
+`directRestore` or a nonempty recovery ID. It dispatches the explicit
+`storage-plan-without-backup <id> <location> <operation> <source>` command, scoped
+to `install` and FULL `restore-archive`. It never creates a recovery copy.
+U-Boot and GPT repair retain automatic BOOT backup. Legacy saved plans remain readable.
 
 Confirmation requires lowercase `ok`. Full writes warn that all data is replaced;
 partial writes identify their limited scope. Helpers doing full-media work have
@@ -114,7 +121,8 @@ reused only when its stored bytes match; tampering is still an error. Sources
 and backups remain reusable across transactions without an extra recovery copy
 in Advanced Restore. They perform no eMMC writes. Execution
 requires explicit confirmation, locks/revalidates inputs, compares the current
-disk with the recovery copy, and consumes the plan once before writing.
+boot/GPT fingerprint (legacy plans retain their bounded boot-backup comparison),
+and consumes the plan once before writing.
 Direct Advanced Restore instead checks the planned boot/GPT fingerprint without
 making a recovery backup. Every range is reread and hashed; final GPT bytes must match the intended result.
 Failure retains the consumed plan, journal and backup; no automatic retry or rollback.
@@ -138,8 +146,19 @@ remain sequential, sector-aligned and at most 1 MiB. Each complete range is
 reread after all its writes; no sampling, skipped zeros or concurrent USB commands.
 Workers validate offsets/counts, propagate errors and join on both success and
 failure. Source handles remain locked through the transaction. RAW preflight
-performs one full pass against the original imported SHA256, not two identical
-passes. Separate planning and execution checks remain in place.
+performs one full pass against the original imported SHA256.
+Archive preview does not decompress payloads; execution checks the source once.
+For HAOS, whole-image and write-payload SHA256 are derived in one file pass per
+planning/execution instead of rereading nearly the entire image for each hash.
+
+GUI storage execution uses `storage-execute-gated`. After all preflight checks,
+the helper emits `write-ready` and waits for a single `G` byte on stdin before
+consuming the plan or writing. `storage_cancel()` can terminate preparation only.
+The parent serializes cancellation and window closing with permission, sets the window-close guard
+before sending permission, and rejects cancellation once writing starts. Closing
+the GUI during preparation kills the contained helper before it has permission.
+Cancellation leaves the pending plan reusable and creates no write journal.
+Manufacturer tool and Connectivity maintenance keep their existing close guards.
 
 Successful storage results include additive `timings`: preflight_s, write_s,
 readback_s, total_s, source_work_s, source_wait_s, usb_write_s, readback_hash_s,
@@ -338,9 +357,10 @@ downloaded image cache, saved history, language/theme preferences or USB drivers
 Late progress events are ignored when no matching work is active.
 
 Advanced UI exposes storage info, U-Boot update, full/partial backup/restore and GPT
-inspection/repair. Write actions prepare a preview and, except for Advanced Restore, a verified recovery backup,
-then require typing ok before the explicit write action. Closing the native
-window is prevented during storage execution. The UI has no write-cancel action.
+inspection/repair. Write actions prepare a preview and a recovery backup unless
+Advanced Restore or explicit wizard backup skipping is selected, then require
+typing ok before the explicit write action. Closing the native window is prevented
+from write permission through readback. The UI can cancel storage preflight only.
 Image cancellation remains independent and cannot interrupt a storage write.
 
 Advanced backup/restore starts with a task chooser and shows only the selected

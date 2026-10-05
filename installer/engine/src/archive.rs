@@ -207,14 +207,17 @@ impl Archive {
 }
 fn overlay(src:&[u8],offset:u64,dst:&mut[u8],target:u64){let start=offset.max(target);let end=(offset+src.len() as u64).min(target+dst.len() as u64);if start<end{dst[(start-target) as usize..(end-target) as usize].copy_from_slice(&src[(start-offset) as usize..(end-offset) as usize]);}}
 pub fn open(base:&Path,id:&str,notify:&mut impl FnMut(Progress))->Result<Archive>{
+    let mut a=open_metadata(base,id)?;a.verify(notify)?;Ok(a)
+}
+pub fn open_metadata(base:&Path,id:&str)->Result<Archive>{
     if !valid_id(id){return Err(fail("BACKUP_ID","Select a backup file"));}
-    let mut a=if id.starts_with("raw-"){
+    let a=if id.starts_with("raw-"){
         let path=raw_path(base,id)?;
         // Use the imported digest as the expectation, not a newly computed one.
         // One full pass below verifies payload, exact length and saved headers.
         raw_headers(&path,id[4..].into())?
     }else{Archive::open(&path(base,id)?)?};
-    a.verify(notify)?;Ok(a)
+    Ok(a)
 }
 fn raw_path(base:&Path,id:&str)->Result<PathBuf>{
     let p=base.join("data/backup-imports").join(format!("{id}.json"));
@@ -248,11 +251,11 @@ pub fn import(base:&Path,p:&Path,notify:&mut impl FnMut(Progress))->Result<Value
         fs::write(dir.join(format!("{id}.json")),serde_json::to_vec(&json!({"path":fs::canonicalize(p).map_err(ioerr)?})).map_err(err)?).map_err(ioerr)?;
         let mut v=report(p,&a.meta)?;v["id"]=json!(id);v["display_name"]=json!(p.file_name().unwrap().to_string_lossy());return Ok(v);
     }
-    let mut a=Archive::open(p)?;a.verify(notify)?;
+    let mut a=Archive::open(p)?;
     let managed=base.join("backup");let selected=fs::canonicalize(p).map_err(ioerr)?;
     if managed.is_dir()&&selected.parent()==Some(fs::canonicalize(&managed).map_err(ioerr)?.as_path()){
         let name=selected.file_name().unwrap().to_string_lossy();
-        if valid_id(&name){return report(&managed.join(name.as_ref()),&a.meta);}
+        if valid_id(&name){let mut v=report(&managed.join(name.as_ref()),&a.meta)?;v["verified"]=json!(false);return Ok(v);}
     }
     // Selected external archives become portable, without changing the source.
     let (final_path,tmp,mut f)=reserve(base,&a.meta.kind)?;
@@ -264,7 +267,7 @@ pub fn catalog(base:&Path)->Result<Vec<Value>>{
     let dir=base.join("backup");let mut rows=vec![];
     if dir.exists(){for entry in fs::read_dir(dir).map_err(ioerr)?{let entry=entry.map_err(ioerr)?;let id=entry.file_name().to_string_lossy().into_owned();if !valid_id(&id)||id.starts_with("raw-"){continue;}
         // Listing checks bounded metadata, not 32 GB per file. Restore always
-        // verifies every payload byte before offering a write plan.
+        // verifies every payload byte before the first write, not at preview.
         match Archive::open(&entry.path()){Ok(a)=>{let mut v=report(&entry.path(),&a.meta)?;v["verified"]=json!(false);rows.push(v);},Err(e)=>rows.push(json!({"id":id,"restorable":false,"error":e}))}
     }}
     let imports=base.join("data/backup-imports");

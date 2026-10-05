@@ -211,6 +211,7 @@
     "installer/scripts/mutation-flash.mjs",
     "installer/scripts/mutation-gui-lock.mjs",
     "installer/scripts/mutation-images.mjs",
+    "installer/scripts/mutation-install-preflight.mjs",
     "installer/scripts/mutation-native.mjs",
     "installer/scripts/mutation-pipeline.mjs",
     "installer/scripts/mutation.mjs",

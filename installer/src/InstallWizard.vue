@@ -5,9 +5,9 @@ import { ArrowLeft, ArrowRight, Download, FolderOpen, HardDrive, Info, ShieldChe
 import type { ImageRelease, PreparedImage, ImageProgress } from './api';
 import RestoreSummary from './RestoreSummary.vue';
 
-const props=defineProps<{ active:boolean; busy: boolean; step:number; mode:'install'|'restore'; restoreInfo:any; canConnect:boolean; loader:boolean; deviceLabel: string; backupPath?: string; releases:ImageRelease[]; releasesLoading:boolean; releaseError:string; preparedImage:PreparedImage|null; imageProgress:ImageProgress|null; cancelling:boolean; canInstall:boolean }>();
+const props=defineProps<{ active:boolean; busy: boolean; step:number; mode:'install'|'restore'; restoreInfo:any; canConnect:boolean; loader:boolean; deviceLabel: string; backupPath?: string; backupSkipped?:boolean; releases:ImageRelease[]; releasesLoading:boolean; releaseError:string; preparedImage:PreparedImage|null; imageProgress:ImageProgress|null; cancelling:boolean; canInstall:boolean }>();
 const emit=defineEmits<{ 'update:step':[step:number]; 'choose-mode':[mode:'install'|'restore']; connect:[]; backup:[]; 'enter-official':[]; 'load-releases':[]; download:[version:string]; 'select-image':[]; 'select-backup':[]; 'clear-image':[]; 'cancel-image':[]; install:[] }>();
-const steps = ['작업 선택','연결', '전체 백업', '파일 선택', '확인·실행'];
+const steps = ['작업 선택','연결', '백업 선택', '파일 선택', '확인·실행'];
 const current = computed(()=>props.step);
 const direction = ref('forward');
 watch(current,(next,previous)=>{direction.value=next>previous?'forward':'backward';},{flush:'sync'});
@@ -26,12 +26,12 @@ function loadReleases(){if(!props.busy&&!props.releasesLoading)emit('load-releas
 function chooseSource(next:'official'|'local'){if(props.busy||source.value===next)return;source.value=next;emit('clear-image');}
 function chooseVersion(next:string){if(props.busy||version.value===next)return;version.value=next;if(source.value==='official')emit('clear-image');}
 const restoreReady=computed(()=>props.restoreInfo?.kind==='FULL'&&props.restoreInfo?.restorable);
-const primaryDisabled=computed(()=>props.busy || (current.value===0 ? false : current.value===1 ? !props.canConnect : current.value===2 ? !props.canInstall : current.value===3 ? props.mode==='install'&&!props.preparedImage&&source.value==='official'&&!canDownload.value : !props.canInstall||!props.backupPath||(props.mode==='install'?!props.preparedImage:!restoreReady.value)));
+const primaryDisabled=computed(()=>props.busy || (current.value===0 ? false : current.value===1 ? !props.canConnect : current.value===2 ? !props.canInstall : current.value===3 ? props.mode==='install'&&!props.preparedImage&&source.value==='official'&&!canDownload.value : !props.canInstall||(!props.backupPath&&!props.backupSkipped)||(props.mode==='install'?!props.preparedImage:!restoreReady.value)));
 const primaryLabel=computed(()=>{
   if(props.busy)return '작업 중…';
   if(current.value===0)return '다음: 연결';
   if(current.value===1)return props.loader?'장치 확인 후 다음':'장치 준비 후 다음';
-  if(current.value===2)return props.backupPath?'다음: 파일 선택':'백업 후 다음';
+  if(current.value===2)return props.backupPath||props.backupSkipped?'다음: 파일 선택':'백업 후 다음';
   if(current.value===3){if(props.mode==='restore')return restoreReady.value?'다음: 확인':'파일 선택 후 다음';return props.preparedImage?'다음: 확인':source.value==='official'?'다운로드 후 다음':'파일 선택 후 다음';}
   return props.mode==='install'?'설치 준비':'복원 준비';
 });
@@ -111,7 +111,7 @@ function goTo(next: number, locked: boolean) {
         <div class="panel-top"><HardDrive :size="26"/><div><h3>{{ t(mode==='restore'?'복원 내용 확인':'설치 내용 확인') }}</h3><p>{{ t(mode==='restore'?'복원할 장치와 백업 파일을 확인하세요.':'설치할 장치와 이미지를 확인하세요.') }}</p></div></div>
         <dl class="review-list">
           <div><dt>{{ t("대상 장치") }}</dt><dd>{{ deviceLabel }}</dd></div>
-          <div><dt>{{ t("전체 백업") }}</dt><dd :class="{ 'review-path': backupPath }">{{ backupPath || t("백업 없음") }}</dd></div>
+          <div><dt>{{ t("전체 백업") }}</dt><dd :class="{ 'review-path': backupPath }">{{ backupPath || t(backupSkipped?'백업 없이 진행':'백업 없음') }}</dd></div>
           <div v-if="mode==='restore'"><dt>{{t('복원할 백업')}}</dt><dd class="review-path">{{restoreInfo?.path??t('백업을 선택하세요')}}</dd></div>
           <template v-else>
             <div><dt>{{ t("HAOS 이미지") }}</dt><dd>{{preparedImage?.filename??t("이미지 선택 안 됨")}}</dd></div>

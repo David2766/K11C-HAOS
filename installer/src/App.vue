@@ -25,6 +25,9 @@ const backupChoices=ref<any[]>([]);const restoreId=ref('');const gptResult=ref<a
 const catalogLoading=ref(false);let catalogGeneration=0;
 const backupDone=ref(false);
 const wizardMode=ref<'install'|'restore'>('install');const backupKind=ref('FULL');
+const backupPolicy=ref<'full'|'skip'>('full');
+const storageExecuting=ref(false);const storageCancelling=ref(false);
+const canCancelStorage=computed(()=>storageExecuting.value&&!storageCancelling.value&&progress.value?.phase==='preflight-write');
 const advancedBackupMode=ref<'backup'|'restore'|null>(null);
 const restoreSource=ref<'manufacturer'|'backup'|null>(null);
 const factoryImage=ref<any>(null);
@@ -56,6 +59,7 @@ const canRead=computed(()=>canInspect.value&&readyObservation.value);
 const canPrepare=computed(()=>canInspect.value&&device.value?.mode==='Maskrom'&&!readyObservation.value);
 const tabs=[{id:'prepare',label:'설치·복구',icon:Usb},{id:'advanced',label:'고급 기능',icon:Wrench},{id:'history',label:'작업 기록',icon:History},{id:'settings',label:'설정',icon:Settings}];
 const phaseNames:Record<string,string>={upload:'Loader 전송 중',reconnect:'장치 다시 연결 중',read:'eMMC 읽는 중','read-compress':'eMMC 읽기·압축 중',verify:'백업 대조 중','verify-backup-file':'백업 파일 검사 중',complete:'백업 완료','preflight-write':'이미지·기록 범위 확인 중',write:'eMMC 기록 중','verify-write':'기록한 데이터 읽기 대조 중','write-complete':'기록·검증 완료'};
+phaseNames['write-starting']='eMMC 기록 중';
 phaseNames['factory-check']='제조사 이미지 검사 중';phaseNames['factory-write']='제조사 이미지 기록 중';
 const progressLabel=computed(()=>phaseNames[progress.value?.phase]??'장치 확인 중');
 const percentage=computed(()=>progress.value?.total?Math.min(100,Math.round(progress.value.completed/progress.value.total*100)):null);
@@ -166,7 +170,8 @@ async function backup(){if(!canRead.value)return false;if(tab.value==='advanced'
  try{const r=await call('backup_device',{instanceId:selected.value,kind:tab.value==='prepare'?'FULL':backupKind.value});if(!accept(r))return false;backupResult.value=r.data;backupDone.value=tab.value==='advanced';return true;}
  finally{busy.value=false;progress.value=null;}
 }
-async function backupNext(){if(!canRead.value)return;if((backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;}
+async function backupNext(){if(!canRead.value)return;if(backupPolicy.value==='skip'||(backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;}
+function chooseBackupPolicy(policy:'full'|'skip'){if(busy.value||writePlan.value)return;backupPolicy.value=policy;}
 function chooseMode(mode:'install'|'restore'){if(busy.value||writePlan.value)return;wizardMode.value=mode;clearImage();restoreId.value='';}
 async function chooseBackup(){
  if(tab.value==='advanced'&&restoreSource.value!=='backup')return;
@@ -228,7 +233,7 @@ async function planWrite(operation:string){
  if(!canRead.value||writePlan.value)return;
  if(operation==='install'&&!preparedImage.value)return;
  if(['restore','restore-archive'].includes(operation)&&!canRestore.value)return;
- if(tab.value==='prepare'&&(!backupResult.value?.verified||backupResult.value.kind!=='FULL'))return;
+ if(tab.value==='prepare'&&backupPolicy.value!=='skip'&&(!backupResult.value?.verified||backupResult.value.kind!=='FULL'))return;
  if(tab.value==='prepare'&&wizardMode.value==='restore'&&restoreInfo.value?.kind!=='FULL')return;
  if(operation==='gpt-repair'&&!gptResult.value?.repairable)return;
  let source=operation==='install'?preparedImage.value!.sha256:['restore','restore-archive'].includes(operation)?restoreId.value:'';
@@ -236,8 +241,9 @@ async function planWrite(operation:string){
  try{
   if(operation==='uboot'){const boot=await call('boot_prepare');if(!accept(boot))return;bootSelection.value=boot.data;source=boot.data.sha256;}
   const directRestore=tab.value==='advanced'&&['restore','restore-archive'].includes(operation);
-  const recovery=!directRestore&&backupResult.value?.verified&&backupResult.value.kind==='FULL'?backupResult.value.id:'';
-  const r=await call('storage_plan',{instanceId:selected.value,location:device.value.location,directRestore,operation,source,recovery});
+  const skipBackup=tab.value==='prepare'&&backupPolicy.value==='skip';
+  const recovery=!directRestore&&!skipBackup&&backupResult.value?.verified&&backupResult.value.kind==='FULL'?backupResult.value.id:'';
+  const r=await call('storage_plan',{instanceId:selected.value,location:device.value.location,directRestore,skipBackup,operation,source,recovery});
   if(accept(r)){if(r.data.no_changes)notice.value='이미 정상 상태입니다. 변경할 내용이 없습니다.';else{writePlan.value=r.data;writeConfirm.value='';}}
  }finally{busy.value=false;progress.value=null;}
 }
@@ -266,20 +272,26 @@ function resetCompletedWork(){
  confirmOpen.value=false;confirmed.value=false;progress.value=null;
  imageProgress.value=null;imageWorking.value=false;cancelling.value=false;
  notice.value='';error.value=null;wizardStep.value=0;wizardSession.value++;
- wizardMode.value='install';backupKind.value='FULL';advancedBackupMode.value=null;restoreSource.value=null;factoryImage.value=null;
+ wizardMode.value='install';backupKind.value='FULL';backupPolicy.value='full';advancedBackupMode.value=null;restoreSource.value=null;factoryImage.value=null;
 }
 function dismissCompletedWork(){if(busy.value)return;resetCompletedWork();}
 async function executeWrite(){
  if(!canExecute.value)return;
- const id=writePlan.value.plan_id;const factory=['factory','factory-raw'].includes(writePlan.value.operation);busy.value=true;error.value=null;writeResult.value=null;writePlan.value=null;writeConfirm.value='';progress.value={phase:factory?'factory-write':'preflight-write'};
- try{const r=await call(factory?'factory_execute':'storage_execute',{planId:id,confirmed:true});if(accept(r)&&r.data.verified){resetCompletedWork();accept(r);writeResult.value=r.data;}}
- finally{busy.value=false;progress.value=null;}
+ const id=writePlan.value.plan_id;const factory=['factory','factory-raw'].includes(writePlan.value.operation);busy.value=true;error.value=null;writeResult.value=null;writePlan.value=null;writeConfirm.value='';progress.value={phase:factory?'factory-write':'preflight-write'};storageExecuting.value=!factory;storageCancelling.value=false;
+ try{const r=await call(factory?'factory_execute':'storage_execute',{planId:id,confirmed:true});if(r.error?.code==='STORAGE_CANCELLED')notice.value='기록 전에 취소했습니다. eMMC 데이터는 변경되지 않았습니다.';else if(accept(r)&&r.data.verified){resetCompletedWork();accept(r);writeResult.value=r.data;}}
+ finally{busy.value=false;progress.value=null;storageExecuting.value=false;storageCancelling.value=false;}
+}
+async function cancelStorage(){
+ if(!canCancelStorage.value)return;storageCancelling.value=true;
+ const r=await call('storage_cancel');
+ if(r.error?.code==='WRITE_IN_PROGRESS'){progress.value={phase:'write-starting'};storageCancelling.value=false;}
+ else if(!accept(r))storageCancelling.value=false;
 }
 async function navigate(id:string){if(busy.value||writePlan.value)return;if(writeResult.value||appResult.value||backupDone.value)resetCompletedWork();if(id!=='advanced'&&appPlan.value)cancelApp();tab.value=id;if(id==='history'){const r=await call('history');if(accept(r))records.value=r.data;}if(id==='advanced')await loadBackups();}
 function operationName(op:string){return ({preflight:'연결 확인','driver-setup':'드라이버 준비',inspect:'저장장치 확인',prepare:'장치 준비',backup:'백업','backup-import':'백업 가져오기','image-releases':'HAOS 버전 조회','image-download':'HAOS 다운로드','image-import':'이미지 가져오기','gpt-check':'GPT 검사','backup-catalog':'백업 목록','storage-plan':'기록 준비','storage-execute':'eMMC 기록·검증','factory-import':'제조사 이미지','factory-plan':'설치 내용 확인','factory-execute':'제조사 이미지 설치'} as Record<string,string>)[op]??op;}
 function size(bytes:number){return number(bytes/1024**3,1)+' GiB';}
 function clearImage(){if(!busy.value)preparedImage.value=null;}
-watch(()=>[selected.value,device.value?.location,device.value?.mode,device.value?.binding].join('|'),()=>{observation.value=null;backupResult.value=null;confirmed.value=false;confirmOpen.value=false;if(notice.value==='장치 준비 완료')notice.value='';},{flush:'sync'});
+watch(()=>[selected.value,device.value?.location,device.value?.mode,device.value?.binding].join('|'),()=>{observation.value=null;backupResult.value=null;backupPolicy.value='full';confirmed.value=false;confirmOpen.value=false;if(notice.value==='장치 준비 완료')notice.value='';},{flush:'sync'});
 watch(()=>observation.value?.os,()=>{backupKind.value='FULL';});
 watch(()=>[selected.value,device.value?.location,device.value?.mode,device.value?.binding,preparedImage.value?.sha256,restoreId.value,factoryImage.value?.id,restoreSource.value].join('|'),()=>{writePlan.value=null;writeConfirm.value='';gptResult.value=null;writeResult.value=null;},{flush:'sync'});
 onMounted(async()=>{if(native){unlisten=await listen('usb-progress',e=>{if(busy.value&&progress.value!==null)progress.value=e.payload;});unlistenImage=await listen<ImageProgress>('image-progress',e=>{if(imageWorking.value)imageProgress.value=e.payload;});unlistenClose=await listen('write-close-blocked',()=>{if(busy.value)notice.value='기록·검증이 끝날 때까지 프로그램과 USB 연결을 유지하세요.';});await setup();timer=setInterval(poll,2000);}});
@@ -304,11 +316,11 @@ onUnmounted(()=>{if(timer)clearInterval(timer);unlisten?.();unlistenImage?.();un
    <select v-if="devices.length>1" class="device-select" :disabled="busy" v-model="selected"><option value="">{{ t("장치를 선택하세요") }}</option><option v-for="d in devices" :value="d.instance_id">{{d.location}} · {{d.mode}} · {{d.instance_id}}</option></select>
    <div v-if="notice" class="status-line" role="status"><Check v-if="driver?.installed" :size="15"/><Info v-else :size="15"/>{{t(notice)}}</div>
    <div v-if="error" class="error" role="alert"><AlertCircle :size="18"/><div><strong>{{t(errorText[error.code])||t("작업을 완료하지 못했습니다. 상세 내용을 확인해 주세요.")}}</strong><details><summary>{{ t("상세 정보") }}</summary><pre>{{error.code + '\n' + error.detail}}</pre></details></div></div>
-   <section v-if="busy&&progress" class="panel progress-panel" role="status"><div class="setting-row"><b>{{t(progressLabel)}}</b><span>{{percentage===null?t("잠시 기다려 주세요"):percentage+'%'}}</span></div><progress v-if="percentage!==null" :value="percentage" max="100"/><progress v-else/></section>
+   <section v-if="busy&&progress" class="panel progress-panel" role="status"><div class="setting-row"><b>{{t(progressLabel)}}</b><span>{{percentage===null?t("잠시 기다려 주세요"):percentage+'%'}}</span></div><progress v-if="percentage!==null" :value="percentage" max="100"/><progress v-else/><button v-if="storageExecuting&&progress.phase==='preflight-write'" class="folder-button" data-storage-cancel :disabled="!canCancelStorage" @click="cancelStorage">{{storageCancelling?t('취소하는 중'):t('취소')}}</button></section>
 
    <section v-if="writeResult" class="panel write-result" role="status"><Check :size="24"/><div><h3>{{t('{operation} 완료',{operation:t(writeNames[writeResult.operation])})}}</h3><p>{{ t("기록한 데이터를 다시 읽어 확인했습니다.") }}</p><p v-if="writeResult.operation!=='gpt-repair'">{{ t("USB와 전원을 분리하고, SD 카드 없이 전원을 다시 연결하세요.") }}<span v-if="writeResult.operation==='install'"> {{ t("최초 부팅에는 몇 분 정도 걸릴 수 있습니다.") }}</span></p><details><summary>{{ t("백업·작업 기록") }}</summary><p class="path">{{writeResult.backup_path}}</p><p class="path">{{writeResult.journal}}</p></details></div></section>
    <button v-if="writeResult||appResult||backupDone" class="secondary" data-completion-dismiss :disabled="busy" @click="dismissCompletedWork">{{ t('확인') }}</button>
-   <InstallWizard :key="wizardSession" v-show="tab==='prepare'" v-model:step="wizardStep" :mode="wizardMode" :restore-info="restoreInfo" @choose-mode="chooseMode" @select-backup="chooseBackup" :active="tab==='prepare'" :busy="busy||confirmOpen||!!writePlan" :can-connect="canInspect" :loader="device?.mode==='Loader'||readyObservation" :can-install="canRead" :device-label="device?(observation?'eMMC · '+size(observation.bytes):'Rockchip USB · '+device.mode):t('연결 안 됨')" :backup-path="backupResult?.verified&&backupResult?.kind==='FULL'?backupResult.path:undefined"
+   <InstallWizard :key="wizardSession" v-show="tab==='prepare'" v-model:step="wizardStep" :mode="wizardMode" :restore-info="restoreInfo" @choose-mode="chooseMode" @select-backup="chooseBackup" :active="tab==='prepare'" :busy="busy||confirmOpen||!!writePlan" :can-connect="canInspect" :loader="device?.mode==='Loader'||readyObservation" :can-install="canRead" :device-label="device?(observation?'eMMC · '+size(observation.bytes):'Rockchip USB · '+device.mode):t('연결 안 됨')" :backup-skipped="backupPolicy==='skip'" :backup-path="backupPolicy==='full'&&backupResult?.verified&&backupResult?.kind==='FULL'?backupResult.path:undefined"
     :releases="releases" :prepared-image="preparedImage" :image-progress="imageProgress" :cancelling="cancelling"
     :releases-loading="releaseState==='loading'" :release-error="t(releaseError)"
     @connect="connectNext" @backup="backupNext" @clear-image="clearImage" @enter-official="ensureReleases" @load-releases="loadReleases" @download="prepareImage" @select-image="prepareImage()" @cancel-image="cancelImage" @install="wizardMode==='install'?planWrite('install'):restoreWrite()">
@@ -320,11 +332,18 @@ onUnmounted(()=>{if(timer)clearInterval(timer);unlisten?.();unlistenImage?.();un
     </section>
     </template>
     <template #backup>
+    <div class="source-grid" role="group" :aria-label="t('백업 선택')">
+     <button class="source-card" data-backup-policy="full" :class="{selected:backupPolicy==='full'}" :aria-pressed="backupPolicy==='full'" :disabled="busy" @click="chooseBackupPolicy('full')"><FileCheck :size="24"/><span><strong>{{t('전체 백업')}}</strong><small>{{t('OS·설정·데이터를 압축 저장하고 원본과 대조합니다.')}}</small></span></button>
+     <button class="source-card" data-backup-policy="skip" :class="{selected:backupPolicy==='skip'}" :aria-pressed="backupPolicy==='skip'" :disabled="busy" @click="chooseBackupPolicy('skip')"><ArrowRight :size="24"/><span><strong>{{t('백업 없이 진행')}}</strong><small>{{t('현재 OS와 데이터를 백업하지 않습니다.')}}</small></span></button>
+    </div>
+    <p v-if="backupPolicy==='skip'" class="body-note warning">{{t('설치·복원 시 기존 데이터가 삭제됩니다. 필요한 백업이 있는지 확인하세요.')}}</p>
+    <template v-else>
     <section class="panel"><div class="panel-top"><FileCheck :size="26"/><div><h3>{{ t("전체 백업") }}</h3><p>{{ t("OS·설정·데이터를 압축 저장하고 원본과 대조합니다.") }}</p></div></div>
      <p class="body-note">{{ t("eMMC 전체 용량을 읽으므로 시간이 걸립니다. 압축률은 저장된 데이터에 따라 달라집니다.") }}</p>
      <div class="footer-actions"><button class="folder-button" @click="openBackups"><Folder :size="16"/>{{ t("백업 폴더 열기") }}</button></div>
      <div v-if="backupResult" class="backup-result" role="status"><Check :size="20"/><div><strong>{{ t("백업 저장·검증 완료") }}</strong><p class="path">{{backupResult.path}}</p><p v-if="backupResult.gpt.healthy">{{ t("GPT 정상") }}</p><p v-else class="warning">{{ t("GPT 확인 필요 — 상세 정보에서 검사 결과를 확인하세요.") }}</p><details><summary>{{ t("상세 정보") }}</summary><pre>{{JSON.stringify(backupResult,null,2)}}</pre></details></div></div>
     </section>
+    </template>
     </template>
    </InstallWizard>
 

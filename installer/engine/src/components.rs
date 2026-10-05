@@ -130,7 +130,8 @@ fn prepare_with(net:&impl Transport,base:&Path,raw:PreparedImage,job:&mut Job<'_
  save_json(&base.join("data/components/boots").join(format!("{}.json",c.boot.asset.sha256)),&json!(c.boot))?;
  let (data_temp,data)=Temporary::new(&base.join("data/components/work"),"ext4")?;drop(data);fs::remove_file(&data_temp.path).map_err(io)?;
  let receipt=builder.build(base,&raw.path,&s,&data_temp.path,job)?;
- if receipt.bytes<2048||receipt.bytes>LIMIT||receipt.bytes%512!=0||!hash_id(&receipt.sha256)||images::file_hash(&data_temp.path,job,"verify-component")?!=(receipt.bytes,receipt.sha256.clone()){return Err(fail("COMPONENT_HASH","Prepared data digest mismatch"));}
+ // Composition checks exact length and SHA256 while copying these same bytes.
+ if receipt.bytes<2048||receipt.bytes>LIMIT||receipt.bytes%512!=0||!hash_id(&receipt.sha256){return Err(fail("COMPONENT_HASH","Prepared data digest mismatch"));}
  s.data_bytes=receipt.bytes;s.data_sha256=receipt.sha256;
  let prepared=compose(base,&raw,&s,&data_temp.path,job)?;
  let record=Selection{schema:2,image:prepared.sha256.clone(),seed:s.clone(),boot:c.boot.clone()};

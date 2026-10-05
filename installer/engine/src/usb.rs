@@ -122,6 +122,15 @@ pub async fn storage_execute(plan_id:&str,confirmed:bool,base:&Path,progress:&mu
     let target=crate::flash::target(base,plan_id)?;let (d,mut io)=selected(&target.instance_id).await?;
     crate::flash::execute(&mut io,base,&d,plan_id,confirmed,progress).await
 }
+pub async fn storage_plan_without_backup(id:&str,location:&str,op:&str,source:&str,base:&Path,progress:&mut impl FnMut(Progress))->Result<Value>{
+    let (d,mut io)=selected(id).await?;
+    if d.location!=location{return Err(fail("DEVICE_CHANGED","Physical USB location changed"));}
+    crate::flash::plan_without_backup(&mut io,base,&d,op,source,progress).await
+}
+pub async fn storage_execute_gated(plan_id:&str,base:&Path,progress:&mut impl FnMut(Progress),gate:&mut impl FnMut()->Result<()>)->Result<Value>{
+    let target=crate::flash::target(base,plan_id)?;let (d,mut io)=selected(&target.instance_id).await?;
+    crate::flash::execute_with_gate(&mut io,base,&d,plan_id,true,progress,gate).await
+}
 pub async fn gpt_check(id:&str)->Result<Value>{let (_,mut io)=selected(id).await?;crate::flash::check(&mut io).await}
 // The vendor CLI selects its only Rockchip device, not a Windows port argument.
 // Refuse any second VID 2207 device, including unsupported/unbound ones.

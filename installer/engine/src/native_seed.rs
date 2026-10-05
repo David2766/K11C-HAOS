@@ -45,7 +45,8 @@ impl Builder for Native{
   let status=child.wait().map_err(|e|fail("COMPONENT_PREPARE",e))?;drop(guard);for r in readers{let _=r.join();}
   if !status.success(){return Err(fail("COMPONENT_PREPARE",String::from_utf8_lossy(&detail)))}
   let receipt:Receipt=serde_json::from_slice(&stdout).map_err(|e|fail("COMPONENT_PREPARE",e))?;
-  if receipt.existing_images==0||receipt.bytes<2048||receipt.bytes%512!=0||!receipt.seconds.is_finite()||receipt.seconds<0.0||images::file_hash(output,job,"verify-component")?!=(receipt.bytes,receipt.sha256.clone()){return Err(fail("COMPONENT_HASH","Native preparation receipt mismatch"));}
+  // The caller checks the data digest while copying it into the installation image.
+  if receipt.existing_images==0||receipt.bytes<2048||receipt.bytes%512!=0||!receipt.seconds.is_finite()||receipt.seconds<0.0{return Err(fail("COMPONENT_HASH","Native preparation receipt mismatch"));}
   Ok(receipt)
  }
 }

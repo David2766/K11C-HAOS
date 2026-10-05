@@ -40,9 +40,11 @@ pub fn verify_file(path: &Path, expected: &str) -> Result<()> {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Action { Preflight, DriverStatus, Devices, Inspect(String), Prepare(String,String), Backup(String), ArchiveBackup(String,String), InstallDriver, ImageReleases, ImageDownload(String), ImageImport(String), InstallationImport(String), BootPrepare, GptCheck(String), BackupCatalog, StoragePlan(String,String,String,String), StoragePlanBacked(String,String,String,String,String), StoragePlanDirectRestore(String,String,String,String), StorageExecute(String), FactoryImport(String), FactoryPlan(String,String,String), FactoryExecute(String) }
+pub enum Action { Preflight, DriverStatus, Devices, Inspect(String), Prepare(String,String), Backup(String), ArchiveBackup(String,String), InstallDriver, ImageReleases, ImageDownload(String), ImageImport(String), InstallationImport(String), BootPrepare, GptCheck(String), BackupCatalog, StoragePlan(String,String,String,String), StoragePlanBacked(String,String,String,String,String), StoragePlanDirectRestore(String,String,String,String), StoragePlanWithoutBackup(String,String,String,String), StorageExecute(String), StorageExecuteGated(String), FactoryImport(String), FactoryPlan(String,String,String), FactoryExecute(String) }
 pub fn parse_action(args: &[String]) -> Result<Action> {
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["storage-plan-without-backup",id,location,op,source] if !id.is_empty()&&id.len()<=512&&!id.contains('\0')&&!location.is_empty()&&location.len()<=256&&!location.contains('\0')&&["install","restore-archive"].contains(op)&&!source.is_empty()&&source.len()<=120&&!source.contains('\0')=>Ok(Action::StoragePlanWithoutBackup((*id).into(),(*location).into(),(*op).into(),(*source).into())),
+        ["storage-execute-gated",id,flag] if *flag==flash::confirmed_flag()&&id.len()==64&&id.bytes().all(|b|b.is_ascii_hexdigit())=>Ok(Action::StorageExecuteGated((*id).into())),
         ["preflight"] => Ok(Action::Preflight),
         ["driver-status"] => Ok(Action::DriverStatus),
         ["devices"] => Ok(Action::Devices),

@@ -49,6 +49,23 @@ impl crate::native_seed::Builder for Build{fn build(&self,_:&Path,_:&Path,_:&See
  assert!(acquire(&n,&base,&a,&mut job).is_err());assert!(!cache_path(&base,&a.sha256).exists());cancel.store(true,std::sync::atomic::Ordering::Relaxed);assert!(acquire(&n,&base,&a,&mut job).is_err());
  if base.exists(){fs::remove_dir_all(base).unwrap();}
 }
+#[test]fn composition_verifies_data_while_copying_without_wrapper_rereads(){
+ struct Wrong;
+ impl crate::native_seed::Builder for Wrong{
+  fn build(&self,_:&Path,_:&Path,_:&Seed,path:&Path,_:&mut Job<'_>)->Result<crate::native_seed::Receipt>{
+   let mut data=vec![0;4*1024*1024];data[1080..1082].copy_from_slice(&[0x53,0xef]);data[1144..1155].copy_from_slice(b"hassos-data");fs::write(path,&data).unwrap();
+   Ok(crate::native_seed::Receipt{bytes:data.len() as u64,sha256:"0".repeat(64),seconds:1.0,existing_images:8})
+  }
+ }
+ let base=std::env::temp_dir().join(format!("k11c-copy-verify-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&base).unwrap();
+ let cancel=AtomicBool::new(false);let mut phases=vec![];let mut notify=|p:images::Progress|phases.push(p.phase);let mut job=Job::new(&cancel,&mut notify);
+ let file=base.join("official.img");fs::write(&file,crate::images::tests::fixture()).unwrap();let raw=images::import(&file,&base,&mut job).unwrap();
+ let c=sample(&raw.sha256,&crate::hash_bytes(&vec![7;512]),512);
+ let net=Net(HashMap::from([(CATALOG_URL.into(),serde_json::to_vec(&c).unwrap()),(c.boot.asset.url.clone(),vec![7;512])]));
+ let error=prepare_with(&net,&base,raw,&mut job,&Wrong).unwrap_err();assert_eq!(error.code,"COMPONENT_HASH");assert!(error.detail.contains("Data changed during composition"));
+ drop(job);assert!(phases.iter().any(|p|p=="add-connectivity"));assert!(!base.join("data/components/installations").exists());
+ fs::remove_dir_all(base).unwrap();
+}
 
 #[test]#[ignore="Requires cached official HAOS and the Windows-native build inputs"]
 fn actual_windows_native_production_path(){

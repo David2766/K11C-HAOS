@@ -24,8 +24,18 @@ async fn main() {
             Action::StoragePlan(id,location,op,source)=>usb::storage_plan(&id,&location,&op,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::StoragePlanBacked(id,location,op,source,recovery)=>usb::storage_plan_backed(&id,&location,&op,&source,&recovery,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::StoragePlanDirectRestore(id,location,op,source)=>usb::storage_plan_direct_restore(&id,&location,&op,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::StoragePlanWithoutBackup(id,location,op,source)=>usb::storage_plan_without_backup(&id,&location,&op,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::ArchiveBackup(id,kind)=>usb::archive_backup(&id,&kind,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::StorageExecute(id)=>usb::storage_execute(&id,true,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::StorageExecuteGated(id)=>{
+                usb::storage_execute_gated(&id,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap()),&mut ||{
+                    use std::io::{Read,Write};
+                    eprintln!("{}",serde_json::json!({"phase":"write-ready","completed":0,"total":0}));
+                    std::io::stderr().flush().map_err(|e|k11c_usb::fail("STORAGE_CANCELLED",e))?;
+                    let mut permit=[0];std::io::stdin().read_exact(&mut permit).map_err(|_|k11c_usb::fail("STORAGE_CANCELLED","Write permission was cancelled"))?;
+                    if permit!=[b'G']{return Err(k11c_usb::fail("STORAGE_CANCELLED","Write permission was cancelled"));}Ok(())
+                }).await
+            },
             Action::FactoryImport(path)=>k11c_usb::factory::import(&base_dir()?,std::path::Path::new(&path),&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())),
             Action::FactoryPlan(id,location,source)=>usb::factory_plan(&id,&location,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::FactoryExecute(id)=>usb::factory_execute(&id,true,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,

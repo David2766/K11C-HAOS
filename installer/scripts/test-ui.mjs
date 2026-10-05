@@ -111,7 +111,7 @@ async function runSuite(overrides = {}) {
     await click(primary(host),true);stage(host,1);
     await click(find(host, 'button', '이전')); stage(host,0);
     assert.equal(disabled(find(host,'button','이전')),true);await click(find(host,'button','이전'),true);stage(host,0);await click(primary(host));stage(host,1);
-    await click(find(host, 'button', '03전체 백업')); stage(host,2);
+    await click(find(host, 'button', '03백업 선택')); stage(host,2);
     assert.equal(disabled(primary(host)), true);
     await click(primary(host), true);stage(host,2);
     assert.equal(ipc.calls.length, 0, 'No backup IPC without a device');
@@ -211,8 +211,8 @@ async function runSuite(overrides = {}) {
     await click(find(host, 'button', '준비 시작'), true);
     assert.equal(ipc.calls.some(c => c.command === 'prepare_device'), false);
     // Directly invoke a disabled step to ensure the handler itself honors locks.
-    assert.equal(disabled(find(host, 'button', '03전체 백업')), true);
-    await click(find(host, 'button', '03전체 백업'), true); stage(host,1);
+    assert.equal(disabled(find(host, 'button', '03백업 선택')), true);
+    await click(find(host, 'button', '03백업 선택'), true); stage(host,1);
     await click(find(host, 'button', '취소'));stage(host,1);
 
     const preflight=rows=>({ok:true,data:{driver:{installed:true},devices:rows}});
@@ -261,7 +261,7 @@ async function runSuite(overrides = {}) {
     await click(find(host, 'button', '설정'), true); stage(host,2);
     finish({ ok: true, data: { id:'FULL-260930-120000.k11cbackup',kind:'FULL',verified:true,path: 'C:/backup/test', gpt: { healthy: true } } }); await pending; await settle();
     stage(host,3);
-    await click(find(host,'button','03전체 백업'));assert.match(text(host), /백업 저장·검증 완료/);
+    await click(find(host,'button','03백업 선택'));assert.match(text(host), /백업 저장·검증 완료/);
     const reusedBackupCalls=ipc.calls.length;await click(primary(host));stage(host,3);assert.equal(ipc.calls.length,reusedBackupCalls,'Same-device verified backup is reused');
     await click(find(host, 'button', '05확인·실행')); stage(host,4);
     assert.match(text(host), /eMMC · 29.8 GiB/);
@@ -304,7 +304,7 @@ async function runSuite(overrides = {}) {
     ipc.replies.boot_prepare={ok:true,data:{sha256:'b'.repeat(64),revision:'r24',source:'github'}};
     await click(find(host,'button','U-Boot 업데이트'));
     assert.equal(ipc.calls.at(-1).command,'storage_plan');
-    assert.deepEqual(ipc.calls.at(-1).args,{instanceId:'OTHER-DEVICE',location:'TEST-PORT',directRestore:false,operation:'uboot',source:'b'.repeat(64),recovery:''});
+    assert.deepEqual(ipc.calls.at(-1).args,{instanceId:'OTHER-DEVICE',location:'TEST-PORT',directRestore:false,skipBackup:false,operation:'uboot',source:'b'.repeat(64),recovery:''});
     assert.match(text(host),/U-Boot 업데이트 확인/);assert.match(text(host),/C:\/backup\/auto/);
     futureDisabled(host,'execute');
     const beforeConfirmation=ipc.calls.length;await click(find(host,'button','기록 시작'),true);assert.equal(ipc.calls.length,beforeConfirmation);
@@ -346,7 +346,7 @@ async function runSuite(overrides = {}) {
     await click(find(host,'button','설치·복구'));await click(find(host,'button','04파일 선택'));
     await click(find(host,'button','내 PC에서 선택다운로드한 HAOS 이미지 사용'));
     ipc.replies.image_select={ok:true,data:{filename:'haos.img',sha256:'d'.repeat(64),bytes:1000000000}};await click(primary(host));stage(host,4);
-    await click(find(host,'button','03전체 백업'));
+    await click(find(host,'button','03백업 선택'));
     ipc.replies.backup_device={ok:true,data:{id:'FULL-260930-120100.k11cbackup',kind:'FULL',verified:true,path:'C:/backup/full',gpt:{healthy:true}}};await click(primary(host));
     await click(find(host,'button','05확인·실행'));assert.equal(disabled(find(host,'button','설치 준비')),false);
     ipc.replies.storage_plan={ok:true,data:planData('install')};await click(find(host,'button','설치 준비'));
@@ -524,7 +524,7 @@ async function runArchiveSuite(overrides={}){
     assert.match(text(host),/D:\/android-full.img/);assert.match(text(host),/C:\/portable\/backup\/FULL-/);
     assert.equal(ipc.calls.filter(c=>c.command==='backup_device').length,1);
     ipc.replies.storage_plan={ok:true,data:{plan_id:'d'.repeat(64),operation:'restore-archive',device:device('Loader'),identity:{sectors:62500000},erases_user_data:true,backup_path:full.path,ranges:[{label:'Full eMMC user area',lba:0,bytes:32000000000}]}};
-    await click(primary(host));assert.deepEqual(ipc.calls.at(-1).args,{instanceId:'K11C-TEST',location:'TEST-PORT',directRestore:false,operation:'restore-archive',source:imported.id,recovery:full.id});
+    await click(primary(host));assert.deepEqual(ipc.calls.at(-1).args,{instanceId:'K11C-TEST',location:'TEST-PORT',directRestore:false,skipBackup:false,operation:'restore-archive',source:imported.id,recovery:full.id});
     field('write-confirm').props.onInput({target:{value:'K11C'}});await settle();futureDisabled(host,'execute');
     field('write-confirm').props.onInput({target:{value:'ok'}});await settle();
     ipc.replies.storage_execute={ok:true,data:{operation:'restore-archive',verified:true,backup_path:full.path,journal:'journal'}};
@@ -738,6 +738,43 @@ async function runFactorySuite(overrides={}){
   }finally{instance.unmount();i18n.setLocale('ko');}
 }
 
+async function runOptionalBackupSuite(overrides={}){
+  i18n.setLocale('ko');
+  for(const mode of ['install','restore']){
+    ipc.calls.length=0;for(const key of Object.keys(ipc.replies))delete ipc.replies[key];
+    const wizard=await compile('InstallWizard',overrides.InstallWizard??sources.InstallWizard);
+    const app=await compile('App',overrides.App??sources.App,wizard.url);
+    const host=element('root'),instance=renderer.createApp(app.component);instance.mount(host);await settle();
+    const by=(key,value)=>nodes(host).find(n=>visible(n)&&n.props[key]===value);
+    try{
+      await click(by('data-wizard-mode',mode));await click(primary(host));
+      ipc.replies.preflight={ok:true,data:{driver:{installed:true},devices:[device('Loader')]}};ipc.replies.inspect_device={ok:true,data:observation()};
+      await click(find(host,'button','연결 다시 확인'));await click(primary(host));stage(host,2);
+      assert.match(String(by('data-backup-policy','full').props.class),/selected/);
+      await click(by('data-backup-policy','skip'));assert.match(text(host),/필요한 백업이 있는지/);
+      ipc.replies.image_releases={ok:true,data:[{version:'18.3',sha256:'a'.repeat(64),filename:'haos.img.xz',size:1000}]};
+      await click(primary(host));stage(host,3);assert.equal(ipc.calls.some(c=>c.command==='backup_device'),false);
+      if(mode==='install'){
+        ipc.replies.image_download={ok:true,data:{sha256:'a'.repeat(64),filename:'haos.img',path:'C:/haos.img',bytes:1000}};
+      }else{ipc.replies.backup_select={ok:true,data:{id:'FULL-260930-120000.k11cbackup',kind:'FULL',path:'C:/backup/FULL.k11cbackup',restorable:true,identity:{sectors:62500000}}};}
+      await click(primary(host));stage(host,4);assert.match(text(host),/백업 없이 진행/);assert.equal(disabled(primary(host)),false);
+      const operation=mode==='install'?'install':'restore-archive';
+      ipc.replies.storage_plan={ok:true,data:{plan_id:'e'.repeat(64),operation,device:device('Loader'),identity:{sectors:62500000},backup_path:null,ranges:[],erases_user_data:true}};
+      await click(primary(host));assert.equal(ipc.calls.at(-1).args.skipBackup,true);assert.equal(ipc.calls.at(-1).args.recovery,'');
+      const input=by('id','write-confirm');input.props.onInput({target:{value:'ok'}});await settle();
+      let finish;ipc.replies.storage_execute=()=>new Promise(resolve=>{finish=resolve;});
+      const pending=by('data-storage-action','execute').props.onClick({});await settle();
+      const cancel=by('data-storage-cancel','');assert.ok(cancel);assert.equal(disabled(cancel),false);
+      ipc.replies.storage_cancel={ok:true,data:{requested:true}};await click(cancel);assert.equal(ipc.calls.at(-1).command,'storage_cancel');assert.equal(disabled(cancel),true);
+      finish({ok:false,error:{code:'STORAGE_CANCELLED'}});await pending;await settle();
+      assert.match(text(host),/eMMC 데이터는 변경되지 않았습니다/);assert.equal(ipc.calls.some(c=>c.command==='backup_device'),false);
+      await click(find(host,'button','03백업 선택'));await click(by('data-backup-policy','full'));
+      await click(find(host,'button','05확인·실행'));assert.equal(disabled(primary(host)),true,'Full-backup policy cannot proceed with a missing backup');
+    }finally{instance.unmount();}
+  }
+}
+
+await runOptionalBackupSuite();
 await runFactorySuite();
 await runAdvancedReadinessSuite();
 await runBackupTaskSuite();
@@ -764,8 +801,8 @@ const mutations = [
   ['busy prop disconnected', 'App', ':busy="busy||confirmOpen||!!writePlan"', ':busy="false"'],
   ['backup device guard removed', 'App', 'async function backup(){if(!canRead.value)return false;', 'async function backup(){'],
   ['backup compression status removed','App',"'read-compress':'eMMC 읽기·압축 중',",''],
-  ['failed backup advances', 'App', "if((backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;", 'await backup();wizardStep.value=3;'],
-  ['backup success does not advance', 'App', "if((backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;", "if((backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup()){}"],
+  ['failed backup advances', 'App', "if(backupPolicy.value==='skip'||(backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;", 'await backup();wizardStep.value=3;'],
+  ['backup success does not advance', 'App', "if(backupPolicy.value==='skip'||(backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup())wizardStep.value=3;", "if(backupPolicy.value==='skip'||(backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup()){}"],
   ['backup reuse removed', 'App', "(backupResult.value?.verified&&backupResult.value?.kind==='FULL')||await backup()", 'await backup()'],
   ['failed Loader inspection advances', 'App', 'if(await inspect())wizardStep.value=2;', 'await inspect();wizardStep.value=2;'],
   ['Loader success does not advance', 'App', 'if(await inspect())wizardStep.value=2;', 'await inspect();'],
@@ -799,6 +836,20 @@ const mutations = [
   ['completed address retained','App',"haToken.value='';haAddress.value='http://homeassistant.local:8123';","haToken.value='';"],
 ];
 const report = [];
+if(process.argv.includes('--optional-mutation')){
+  for(const[name,file,before,after]of [
+    ['skip choice ignored','App',"backupPolicy.value==='skip'||",''],
+    ['skip IPC omitted','App','directRestore,skipBackup,operation,source,recovery','directRestore,skipBackup:false,operation,source,recovery'],
+    ['wizard still forces backup','InstallWizard','(!props.backupPath&&!props.backupSkipped)','!props.backupPath'],
+    ['backup policy cannot be changed back','App','backupPolicy.value=policy;','backupPolicy.value=\'skip\';'],
+    ['storage cancel handler disconnected','App','@click="cancelStorage"','@click="cancelWrite"'],
+  ]){
+    assert.equal(sources[file].split(before).length-1,1,name);
+    try{await runOptionalBackupSuite({[file]:sources[file].replace(before,after)});}catch(error){if(error.code!=='ERR_ASSERTION')throw error;report.push({name,killed:true});console.log(`KILLED: ${name}`);continue;}
+    throw Error(`SURVIVED: ${name}`);
+  }
+  await runOptionalBackupSuite();
+}
 if (process.argv.includes('--mutation')) {
   const readinessMutations=[
     ['advanced preparation handler disconnected','@click="connectAdvanced"','@click="refresh"'],
@@ -832,7 +883,7 @@ if (process.argv.includes('--mutation')) {
     ['task pending plan lock removed','App','if(busy.value||writePlan.value||confirmOpen.value)return;','if(busy.value||confirmOpen.value)return;'],
     ['task lock reversed','App','if(busy.value||writePlan.value||confirmOpen.value)return;','if(!busy.value||writePlan.value||confirmOpen.value)return;'],
     ['wrong task backup allowed','App',"if(tab.value==='advanced'&&advancedBackupMode.value!=='backup')return false;",''],
-    ['task completion retained','App',"backupKind.value='FULL';advancedBackupMode.value=null;","backupKind.value='FULL';"],
+    ['task completion retained','App',"backupKind.value='FULL';backupPolicy.value='full';advancedBackupMode.value=null;","backupKind.value='FULL';backupPolicy.value='full';"],
     ['unknown archive kind allowed','App',"&&['FULL','BOOT','HAOS'].includes(restoreInfo.value.kind)",''],
     ['advanced scope removed','App','<RestoreSummary :info="restoreInfo"/>',''],
     ['confirmation scope removed','App','<RestoreSummary v-if="[\'restore\',\'restore-archive\'].includes(writePlan.operation)" :info="restoreInfo"/>',''],

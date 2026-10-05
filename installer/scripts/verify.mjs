@@ -15,6 +15,11 @@ const before=installedInf?hash(installedInf):null;
 for(const args of [['write','0','image'],['erase'],['preflight','extra'],['driver-install-only','untrusted.inf'],['storage-execute','a'.repeat(64)],['storage-execute','a'.repeat(64),'--yes'],['storage-plan','id','port','erase','']]){const r=run(args);assert.equal(r.exit,1);assert.equal(r.value.error.code,'COMMAND_NOT_ALLOWED');}
 const absent=run(['inspect','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST']);assert.equal(absent.value.error.code,'DEVICE_GONE');
 for(const args of [
+ ['storage-plan-without-backup','id','port','uboot','source'],
+ ['storage-plan-without-backup','id','port','gpt-repair','source'],
+ ['storage-plan-without-backup','id','port','install','source','extra'],
+ ['storage-execute-gated','a'.repeat(64)],
+ ['storage-execute-gated','a'.repeat(64),'--yes'],
  ['archive-backup','id','../FULL'],
  ['storage-plan-backed','id','port','erase','',''],
  ['storage-plan-backed','id','port','restore-archive','source','../recovery'],
@@ -62,6 +67,8 @@ assert.equal(hash(path.join(release,'resources/loader/k11c-usb-loader-v1.23.114.
 for(const args of [['backup','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST'],['prepare','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST','port','--confirmed-k11c'],['gpt-check','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST'],['storage-plan','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST','port','uboot','']])assert.equal(run(args).value.error.code,'DEVICE_GONE');
 assert.equal(hash(path.join(release,'resources/firmware/u-boot-k11c-dfi-r24.bin')),build.firmware_sha256);
 assert.equal(run(['storage-execute','0'.repeat(64),'--confirmed-k11c-write']).value.ok,false,'Missing plan cannot write');
+assert.equal(run(['storage-execute-gated','0'.repeat(64),'--confirmed-k11c-write']).value.ok,false,'Missing gated plan cannot write');
+assert.equal(run(['storage-plan-without-backup','USB\\VID_2207&PID_350A\\NONEXISTENT-K11C-TEST','port','install','a'.repeat(64)]).value.error.code,'DEVICE_GONE');
 assert.equal(run(['prepare','device','port']).value.error.code,'COMMAND_NOT_ALLOWED');
 const ui=['src/App.vue','src/InstallWizard.vue'].map(p=>readFileSync(p,'utf8')).join('\n');assert.doesNotMatch(ui,/NO FLASH|PREVIEW ·|다음 구현 단계|이번 버전은|읽기 전용 빌드|fake-input/);
 const result={passed:true,version,actual_packaged_cli:true,download_on_install:true,no_bundled_installation_data:true,preflight:preflight.value.data,negative_dispatch:true,missing_selection:true,explicit_loader_confirmation:true,explicit_storage_confirmation:true,manufacturer_tool_digests:true,manufacturer_dispatch:true,partition_image_rejection:true,unicode_relocation:true,driver_payload_digests:true,loader_payload_digest:true,firmware_payload_digest:true,customer_copy:true,installed_inf_unchanged:installedInf?true:null,physical_usb_writes_in_this_test:0,hardware_read_verified:false,hardware_loader_verified:false,hardware_write_verified:false};

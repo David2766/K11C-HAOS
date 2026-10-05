@@ -446,7 +446,7 @@ async fn archive_speed_report(){
     eprintln!("ARCHIVE_SPEED_REPORT={report}");
     let out=Path::new(env!("CARGO_MANIFEST_DIR")).join("../test-results");fs::create_dir_all(&out).unwrap();fs::write(out.join("archive-speed.json"),serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
-#[tokio::test] async fn archive_wizard_reuses_full_recovery_and_checks_data_not_only_boot(){
+#[tokio::test] async fn archive_wizard_reuses_full_recovery_without_whole_device_comparisons(){
     let s=Sandbox::new();let mut io=Fake::healthy();let image=s.image();let recovery=archived(&mut io,&s,"FULL").await;
     let count=fs::read_dir(s.0.join("backup")).unwrap().count();
     let p=backed(&mut io,&s,"install",&image,&recovery).await.unwrap();assert_eq!(fs::read_dir(s.0.join("backup")).unwrap().count(),count);
@@ -458,8 +458,64 @@ async fn archive_speed_report(){
     let original=fs::read(&pending).unwrap();fs::write(&pending,b"changed").unwrap();
     assert_eq!(backed(&mut io,&s,"install",&image,&recovery).await.unwrap_err().code,"PLAN_CHANGED");fs::write(&pending,original).unwrap();
     io.disk[36000*512]^=1;
-    assert_eq!(run(&mut io,&s,p["plan_id"].as_str().unwrap()).await.unwrap_err().code,"DEVICE_CHANGED");assert!(io.writes.is_empty());
-    assert!(backed(&mut io,&s,"install",&image,&recovery).await.is_err());
+    run(&mut io,&s,p["plan_id"].as_str().unwrap()).await.unwrap();
+    assert_eq!(fs::read_dir(s.0.join("backup")).unwrap().count(),count);
+}
+#[tokio::test] async fn optional_backup_production_install_and_cancel_guards(){
+    for skip in [false,true]{
+        let s=Sandbox::new();let source=s.image();let mut inner=Fake::healthy();
+        let recovery=if skip{String::new()}else{archived(&mut inner,&s,"FULL").await};
+        let mut io=Metered::new(inner);
+        let p=if skip{plan_without_backup(&mut io,&s.0,&device(),"install",&source,&mut |_|{}).await}else{plan_backed(&mut io,&s.0,&device(),"install",&source,&recovery,&mut |_|{}).await}.unwrap();
+        assert_eq!(p["backup_path"].is_null(),skip);assert!(io.inner.writes.is_empty());
+        assert_eq!(io.events.iter().map(|e|e.2).sum::<usize>(),RESERVE+33*512,"Preview must not reread the full eMMC");
+        assert_eq!(s.0.join("backup").exists(),!skip);
+        let id=p["plan_id"].as_str().unwrap();let before=io.inner.disk.clone();io.events.clear();
+        let e=execute_with_gate(&mut io,&s.0,&device(),id,true,&mut |_|{},&mut ||Err(fail("STORAGE_CANCELLED","test"))).await.unwrap_err();
+        assert_eq!(e.code,"STORAGE_CANCELLED");assert!(io.inner.writes.is_empty());assert_eq!(io.inner.disk,before);
+        assert!(io.events.iter().map(|e|e.2).sum::<usize>()<=2*(RESERVE+33*512),"Preflight must not compare original user data");
+        let dir=s.0.join("data/plans");assert!(dir.join(format!("{id}.json")).exists());assert!(!dir.join(format!("{id}.used.json")).exists());assert!(!dir.join(format!("{id}.journal.jsonl")).exists());
+        io.inner.disk[64*512]^=1;
+        assert_eq!(execute(&mut io,&s.0,&device(),id,true,&mut |_|{}).await.unwrap_err().code,"DEVICE_CHANGED");assert!(io.inner.writes.is_empty());io.inner.disk[64*512]^=1;
+        assert_eq!(execute(&mut io,&s.0,&device(),id,false,&mut |_|{}).await.unwrap_err().code,"CONFIRM_WRITE");assert!(io.inner.writes.is_empty());
+        let mut changed=device();changed.location="OTHER".into();assert_eq!(execute(&mut io,&s.0,&changed,id,true,&mut |_|{}).await.unwrap_err().code,"DEVICE_CHANGED");assert!(io.inner.writes.is_empty());
+        let path=s.0.join("data/images/prepared").join(format!("{source}.img"));let mut image=fs::read(&path).unwrap();image[100000]^=1;fs::write(&path,&image).unwrap();
+        assert_eq!(execute(&mut io,&s.0,&device(),id,true,&mut |_|{}).await.unwrap_err().code,"IMAGE_HASH");assert!(io.inner.writes.is_empty());image[100000]^=1;fs::write(&path,&image).unwrap();
+        let out=execute(&mut io,&s.0,&device(),id,true,&mut |_|{}).await.unwrap();assert_eq!(out["verified"],true);assert_eq!(out["gpt"]["healthy"],true);
+        assert!(execute(&mut io,&s.0,&device(),id,true,&mut |_|{}).await.is_err());
+        assert_eq!(s.0.join("backup").exists(),!skip);
+    }
+}
+#[tokio::test] async fn optional_backup_full_restore_and_scope(){
+    let s=Sandbox::new();let mut io=Fake::healthy();let original=io.disk.clone();let source=archived(&mut io,&s,"FULL").await;
+    let count=fs::read_dir(s.0.join("backup")).unwrap().count();io.disk.fill(0x42);
+    let p=plan_without_backup(&mut io,&s.0,&device(),"restore-archive",&source,&mut |_|{}).await.unwrap();
+    assert_eq!(p["backup_path"],Value::Null);run(&mut io,&s,p["plan_id"].as_str().unwrap()).await.unwrap();assert_eq!(io.disk,original);
+    assert_eq!(fs::read_dir(s.0.join("backup")).unwrap().count(),count);
+    let boot=archived(&mut io,&s,"BOOT").await;
+    assert_eq!(plan_without_backup(&mut io,&s.0,&device(),"restore-archive",&boot,&mut |_|{}).await.unwrap_err().code,"BACKUP_KIND");
+    for op in ["restore","uboot","gpt-repair","erase"]{assert_eq!(plan_without_backup(&mut io,&s.0,&device(),op,"",&mut |_|{}).await.unwrap_err().code,"COMMAND_NOT_ALLOWED");}
+}
+#[test] fn single_image_read_derives_exact_whole_and_payload_hashes(){
+    let s=Sandbox::new();let bytes=(0..3*CHUNK+511).map(|n|(n%251) as u8).collect::<Vec<_>>();let path=s.0.join("hash-test.img");fs::write(&path,&bytes).unwrap();
+    let mut file=locked(&path).unwrap();
+    for (offset,len) in [(0,bytes.len()),(512,2*CHUNK),(CHUNK-17,CHUNK+43)]{
+        let (whole,payload)=image_hashes(&mut file,bytes.len() as u64,offset as u64,len as u64).unwrap();
+        assert_eq!(whole,hash_bytes(&bytes));assert_eq!(payload,hash_bytes(&bytes[offset..offset+len]));
+    }
+    assert!(image_hashes(&mut file,bytes.len() as u64,bytes.len() as u64,512).is_err());
+}
+#[tokio::test] async fn restore_metadata_preview_still_checks_full_payload_before_permission(){
+    let s=Sandbox::new();let mut io=Fake::healthy();let original=io.disk.clone();let path=s.0.join("full-restore.img");
+    fs::write(&path,&original).unwrap();let imported=archive::import(&s.0,&path,&mut |_|{}).unwrap();let source=imported["id"].as_str().unwrap();
+    // Corrupt user data, not the bounded headers used by preview. Selection is
+    // metadata-only, but corruption must be rejected before permission/journal.
+    let mut changed=original.clone();changed[35000*512]^=1;fs::write(&path,changed).unwrap();
+    let p=plan_without_backup(&mut io,&s.0,&device(),"restore-archive",source,&mut |_|{}).await.unwrap();let id=p["plan_id"].as_str().unwrap();
+    let mut granted=false;
+    let e=execute_with_gate(&mut io,&s.0,&device(),id,true,&mut |_|{},&mut ||{granted=true;Ok(())}).await.unwrap_err();
+    assert_eq!(e.code,"BACKUP_VERIFY");assert!(!granted);assert!(io.writes.is_empty());assert_eq!(io.disk,original);
+    let dir=s.0.join("data/plans");assert!(dir.join(format!("{id}.json")).exists());assert!(!dir.join(format!("{id}.used.json")).exists());assert!(!dir.join(format!("{id}.journal.jsonl")).exists());
 }
 #[tokio::test] async fn archive_restore_rejects_corruption_capacity_layout_and_unconfirmed_write(){
     let s=Sandbox::new();let mut io=Fake::healthy();let id=archived(&mut io,&s,"BOOT").await;

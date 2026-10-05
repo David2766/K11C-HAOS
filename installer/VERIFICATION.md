@@ -132,6 +132,32 @@ seconds. These are single-run simulated-transport results, not board speeds.
 Actual transactions record stage times and MiB/s in their existing journals
 and operation history for physical-device comparison.
 
+## Installation preflight and optional backup
+
+Production Vue tests cover both install and restore with explicit backup skipping,
+zero backup IPC calls, the confirmation summary, policy changes, cancellation and
+all five languages. Engine tests meter every USB read: preview reads only 17 MiB
+of boot area plus GPT; execution preflight reads that bounded snapshot twice,
+not the whole eMMC. Cancellation leaves zero writes, no journal and an unconsumed
+plan. Success still requires complete range readback and one-use execution.
+
+Existing recovery archives are metadata-only inputs, not a whole-disk lock.
+Changes to original user-data bytes outside boot/GPT no longer cause an extra
+comparison or block overwrite. Changes to boot/GPT, source payload, USB port,
+capacity, read capability or confirmation still prevent writing.
+Restore previews do not decompress payloads. Execution validates the locked
+restore source once before writing. HAOS whole/payload hashes share one file pass.
+Native preparation data is hashed during composition, not reread by both wrappers.
+Actual USB throughput and GUI helper cancellation require a board trial.
+
+Targeted mutation command: `node scripts/mutation-install-preflight.mjs`.
+`--restore-only` checks that preview remains metadata-only and that corrupted
+user data is rejected before permission, plan consumption or the first write.
+`--close-only` removes/reverses the shared close/write gate. Deterministic ordering
+and 64 concurrent close/permission races must either cancel with zero permission
+bytes or block closing until the permitted write finishes. A closing window cannot
+start a queued execute or reopen the gate after preflight cleanup.
+
 ## Advanced restore and persistent catalog
 
 Advanced restore uses a dedicated no-new-backup plan path. Production transaction
@@ -148,7 +174,7 @@ directory. Missing sources are disabled; listing checks only bounded metadata
 and restoration rejects payload changes against the original imported digest.
 Production Vue tests cover automatic refresh on Restore entry and after completion
 reset, imported filenames, refresh deduplication, direct-restore IPC selection,
-the no-additional-backup notice and unchanged wizard backup behavior.
+the no-additional-backup notice and optional wizard backup behavior.
 
 Targeted mutation commands: `node scripts/mutation-flash.mjs --direct-only`,
 `node scripts/mutation-archive.mjs --raw-only`, and

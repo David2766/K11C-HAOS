@@ -24,7 +24,7 @@ struct Work {segments:Vec<Segment>,primary:Vec<u8>,tail:Vec<u8>,archive:Option<c
 #[derive(Debug,Serialize,Deserialize)]
 struct Plan {format:u32,operation:String,source:String,device:Device,identity:Identity,backup:String,ranges:Vec<Range>,#[serde(default)] target_boot_sha256:Option<String>,#[serde(default,skip_serializing_if="Option::is_none")] attempt:Option<u64>}
 #[derive(Clone,Copy)]
-enum Recovery<'a>{Legacy,Backed(&'a str),DirectRestore}
+enum Recovery<'a>{Legacy,Backed(&'a str),DirectRestore,SkipBackup}
 
 fn disk_io(e:impl std::fmt::Display)->crate::Failure{fail("TRANSACTION_IO",e)}
 fn valid_id(s:&str)->bool{s.len()==64&&s.bytes().all(|b|b.is_ascii_hexdigit()&&!b.is_ascii_uppercase())}
@@ -40,6 +40,18 @@ fn hash_range(f:&mut File,offset:u64,bytes:u64)->Result<String>{
     while done<bytes{let mut data=worker.buffer()?;let len=(bytes-done).min(CHUNK as u64) as usize;
         f.read_exact(&mut data[..len]).map_err(disk_io)?;worker.submit(Block{offset:done,len,data})?;done+=len as u64;}
     Ok(worker.finish()?.hash)
+}
+// Verify the whole image and derive the payload digest from the same read pass.
+fn image_hashes(f:&mut File,len:u64,offset:u64,bytes:u64)->Result<(String,String)>{
+    let end=offset.checked_add(bytes).filter(|end|*end<=len).ok_or_else(||fail("WRITE_RANGE","Invalid image payload"))?;
+    f.seek(SeekFrom::Start(0)).map_err(disk_io)?;
+    let mut whole=Sha256::new();let mut payload=Sha256::new();let mut data=vec![0;CHUNK];let mut done=0;
+    while done<len{
+        let n=(len-done).min(CHUNK as u64) as usize;f.read_exact(&mut data[..n]).map_err(disk_io)?;whole.update(&data[..n]);
+        let start=done.max(offset);let stop=(done+n as u64).min(end);
+        if start<stop{payload.update(&data[(start-done) as usize..(stop-done) as usize]);}done+=n as u64;
+    }
+    Ok((format!("{:x}",whole.finalize()),format!("{:x}",payload.finalize())))
 }
 fn bytes(label:&str,lba:u32,b:Vec<u8>)->Segment{Segment{range:Range{label:label.into(),lba,bytes:b.len() as u64,sha256:hash_bytes(&b)},payload:Payload::Bytes(b)}}
 fn firmware(base:&Path)->Result<Vec<u8>>{
@@ -105,7 +117,7 @@ async fn capture(io:&mut impl UsbIo,identity:&Identity)->Result<Snapshot>{
     workflow::require_gpt_bytes(&head[512..34*512])?;workflow::require_gpt_bytes(&tail)?;
     Ok(Snapshot{primary:head[..34*512].to_vec(),reserved:head[34*512..].to_vec(),tail})
 }
-fn build(base:&Path,op:&str,source:&str,identity:&Identity,device:&Device,current:&Snapshot)->Result<Work>{
+fn build(base:&Path,op:&str,source:&str,identity:&Identity,device:&Device,current:&Snapshot,verify_source:bool)->Result<Work>{
     let mut segments=vec![];
     let mut archive=None;
     let (primary,tail)=match op {
@@ -133,7 +145,9 @@ fn build(base:&Path,op:&str,source:&str,identity:&Identity,device:&Device,curren
             let path=base.join("data/images/prepared").join(format!("{source}.img"));let mut f=locked(&path)?;
             let len=f.metadata().map_err(disk_io)?.len();
             if len%512!=0||len<=34849*512||len>32*1024*1024*1024{return Err(fail("IMAGE_SIZE","Invalid prepared image size"));}
-            if hash_range(&mut f,0,len)?!=source{return Err(fail("IMAGE_HASH","Prepared image changed"));}
+            let offset=2048*512;let count=len-offset-33*512;
+            let (whole,hash)=image_hashes(&mut f,len,offset,count)?;
+            if whole!=source{return Err(fail("IMAGE_HASH","Prepared image changed"));}
             crate::images::inspect(&path,&AtomicBool::new(false))?;
             let mut a=vec![0;34*512];let mut b=vec![0;33*512];
             f.seek(SeekFrom::Start(0)).map_err(disk_io)?;f.read_exact(&mut a).map_err(disk_io)?;
@@ -144,7 +158,6 @@ fn build(base:&Path,op:&str,source:&str,identity:&Identity,device:&Device,curren
             let mut reserved=vec![0;RESERVE-34*512];reserved[30*512..30*512+fw.len()].copy_from_slice(&fw);
             // Copy every byte after the original pre-partition gap, including
             // partition gaps. Old image-end GPT is zeroed, not left as a third copy.
-            let offset=2048*512;let count=len-offset-33*512;let hash=hash_range(&mut f,offset,count)?;
             segments.push(Segment{range:Range{label:"HAOS partitions".into(),lba:34816,bytes:count,sha256:hash},payload:Payload::Image{file:f,offset,bytes:count}});
             let old_tail=(len/512) as u32+32768-33;
             if old_tail<identity.sectors-33 {segments.push(bytes("Old image GPT cleared",old_tail,vec![0;((identity.sectors-33-old_tail).min(33)*512) as usize]));}
@@ -160,7 +173,7 @@ fn build(base:&Path,op:&str,source:&str,identity:&Identity,device:&Device,curren
             (current.primary.clone(),current.tail.clone())
         },
         "restore-archive"=>{
-            let a=crate::archive::open(base,source,&mut |_|{})?;
+            let a=if verify_source{crate::archive::open(base,source,&mut |_|{})?}else{crate::archive::open_metadata(base,source)?};
             if a.meta.identity.sectors!=identity.sectors{return Err(fail("RESTORE_CAPACITY","Full and partial backups require the original eMMC user-area capacity"));}
             if a.meta.kind!="FULL"{
                 gpt::require_k11c(&current.primary,&current.tail,identity.sectors)?;
@@ -223,6 +236,10 @@ pub async fn plan_backed(io:&mut impl UsbIo,base:&Path,device:&Device,operation:
 pub async fn plan_restore_direct(io:&mut impl UsbIo,base:&Path,device:&Device,operation:&str,source:&str,progress:&mut impl FnMut(Progress))->Result<Value>{
     plan_inner(io,base,device,operation,source,Recovery::DirectRestore,progress).await
 }
+pub async fn plan_without_backup(io:&mut impl UsbIo,base:&Path,device:&Device,operation:&str,source:&str,progress:&mut impl FnMut(Progress))->Result<Value>{
+    if !["install","restore-archive"].contains(&operation){return Err(fail("COMMAND_NOT_ALLOWED","Skipping backup is available for wizard installation and full restore"));}
+    plan_inner(io,base,device,operation,source,Recovery::SkipBackup,progress).await
+}
 async fn plan_inner(io:&mut impl UsbIo,base:&Path,device:&Device,operation:&str,source:&str,recovery:Recovery<'_>,progress:&mut impl FnMut(Progress))->Result<Value>{
     if matches!(recovery,Recovery::DirectRestore)&&!["restore","restore-archive","factory-raw"].contains(&operation){return Err(fail("COMMAND_NOT_ALLOWED","Direct restore is only available for restoration"));}
     crate::usb::guard(device)?;let identity=io.identity().await?;crate::usb::require_emmc(&identity.storage)?;
@@ -231,10 +248,11 @@ async fn plan_inner(io:&mut impl UsbIo,base:&Path,device:&Device,operation:&str,
     progress(Progress::new("preflight-write",0,0));
     let current=capture(io,&identity).await?;
     // All image/layout checks happen before creating the automatic recovery copy.
-    let work=build(base,operation,source,&identity,device,&current)?;
+    let work=build(base,operation,source,&identity,device,&current,false)?;
+    if matches!(recovery,Recovery::SkipBackup)&&work.archive.as_ref().is_some_and(|a|a.meta.kind!="FULL"){return Err(fail("BACKUP_KIND","Wizard restore requires FULL"));}
     if work.segments.is_empty(){return Ok(json!({"no_changes":true,"operation":operation,"gpt":gpt::check(&work.primary,&work.tail,identity.sectors)}));}
     let backup=match recovery{
-        Recovery::DirectRestore=>Value::Null,
+        Recovery::DirectRestore|Recovery::SkipBackup=>Value::Null,
         Recovery::Legacy=>workflow::backup(io,&base.join("data/backups"),device,progress).await?,
         Recovery::Backed("")=>{
             let kind=if ["uboot","gpt-repair","restore"].contains(&operation)&&gpt::require_k11c(&current.primary,&current.tail,identity.sectors).is_ok(){"BOOT"}else{"FULL"};
@@ -242,20 +260,21 @@ async fn plan_inner(io:&mut impl UsbIo,base:&Path,device:&Device,operation:&str,
         },
         Recovery::Backed(id)=>{
             if id.starts_with("raw-"){return Err(fail("BACKUP_VERIFY","A raw import is not a current-device recovery backup"));}
-            let a=crate::archive::open(base,id,progress)?;
+            let a=crate::archive::open_metadata(base,id)?;
             if a.meta.kind!="FULL"||a.meta.identity!=identity||!a.meta.usb_reread_verified{return Err(fail("BACKUP_DEVICE","Select the verified FULL backup of the current device"));}
-            crate::archive::compare_device(io,&a.meta,progress).await?;
             json!({"path":crate::archive::path(base,id)?})
         }
     };
-    let (backup_path,backup_name,target_boot_sha256)=if matches!(recovery,Recovery::DirectRestore){
+    let (backup_path,backup_name,target_boot_sha256)=if matches!(recovery,Recovery::DirectRestore|Recovery::SkipBackup){
         (None,String::new(),Some(current.digest()))
     }else{
         let path=PathBuf::from(backup["path"].as_str().ok_or_else(||fail("BACKUP_VERIFY","Missing backup path"))?);
         let name=path.file_name().unwrap().to_string_lossy().into_owned();
-        let checked=snapshot(base,&name,&identity,device)?;
-        if checked.head()!=current.head()||checked.tail!=current.tail{return Err(fail("DEVICE_CHANGED","Boot area changed during planning"));}
-        (Some(path),name,None)
+        if matches!(recovery,Recovery::Legacy){
+            let checked=snapshot(base,&name,&identity,device)?;
+            if checked.head()!=current.head()||checked.tail!=current.tail{return Err(fail("DEVICE_CHANGED","Boot area changed during planning"));}
+            (Some(path),name,None)
+        }else{(Some(path),name,Some(current.digest()))}
     };
     let mut p=Plan{format:1,operation:operation.into(),source:source.into(),device:device.clone(),identity:identity.clone(),backup:backup_name,ranges:work.segments.into_iter().map(|s|s.range).collect(),target_boot_sha256,attempt:None};
     let id=save_plan(base,&mut p)?;
@@ -269,7 +288,7 @@ fn load_plan(base:&Path,id:&str)->Result<Plan>{
     let p:Plan=serde_json::from_slice(&b).map_err(disk_io)?;
     if p.format!=1{return Err(fail("PLAN_ID","Unsupported plan format"));}
     if let Some(hash)=&p.target_boot_sha256{
-        if !p.backup.is_empty()||!["restore","restore-archive","factory-raw"].contains(&p.operation.as_str())||!valid_id(hash){return Err(fail("PLAN_ID","Invalid direct restore plan"));}
+        if !["install","uboot","gpt-repair","restore","restore-archive","factory-raw"].contains(&p.operation.as_str())||!valid_id(hash)||(!p.backup.is_empty()&&!crate::archive::valid_id(&p.backup)){return Err(fail("PLAN_ID","Invalid fingerprint plan"));}
     }else if p.backup.is_empty(){return Err(fail("PLAN_ID","Missing recovery backup"));}
     Ok(p)
 }
@@ -277,6 +296,9 @@ pub fn target(base:&Path,id:&str)->Result<Device>{Ok(load_plan(base,id)?.device)
 pub fn require_factory_plan(base:&Path,id:&str)->Result<()>{if load_plan(base,id)?.operation!="factory-raw"{return Err(fail("COMMAND_NOT_ALLOWED","Expected a manufacturer RAW plan"));}Ok(())}
 fn journal(f:&mut File,v:Value)->Result<()>{writeln!(f,"{v}").and_then(|_|f.sync_all()).map_err(disk_io)}
 pub async fn execute(io:&mut impl FlashIo,base:&Path,device:&Device,id:&str,confirmed:bool,progress:&mut impl FnMut(Progress))->Result<Value>{
+    execute_with_gate(io,base,device,id,confirmed,progress,&mut ||Ok(())).await
+}
+pub async fn execute_with_gate(io:&mut impl FlashIo,base:&Path,device:&Device,id:&str,confirmed:bool,progress:&mut impl FnMut(Progress),gate:&mut impl FnMut()->Result<()>)->Result<Value>{
     let started=Instant::now();
     if !confirmed{return Err(fail("CONFIRM_WRITE","Confirm the selected K11C storage operation"));}
     crate::usb::guard(device)?;let p=load_plan(base,id)?;
@@ -290,18 +312,15 @@ pub async fn execute(io:&mut impl FlashIo,base:&Path,device:&Device,id:&str,conf
         if observed.digest()!=*expected{return Err(fail("DEVICE_CHANGED","Boot/GPT data changed after the preview; prepare a new plan"));}
         observed
     }else{snapshot(base,&p.backup,&identity,device)?};
-    if crate::archive::valid_id(&p.backup){
-        let recovery=crate::archive::open(base,&p.backup,progress)?;
-        crate::archive::compare_device(io,&recovery.meta,progress).await?;
-    }
     progress(Progress::new("preflight-write",0,0));
-    let work=build(base,&p.operation,&p.source,&identity,device,&saved)?;
+    let work=build(base,&p.operation,&p.source,&identity,device,&saved,true)?;
     let ranges:Vec<_>=work.segments.iter().map(|s|s.range.clone()).collect();
     if ranges!=p.ranges{return Err(fail("PLAN_CHANGED","Inputs no longer match the confirmed write plan"));}
     let current=capture(io,&identity).await?;
     if current.head()!=saved.head()||current.tail!=saved.tail{return Err(fail("DEVICE_CHANGED","Boot/GPT data changed after the preview; prepare a new plan"));}
     if io.identity().await?!=identity{return Err(fail("DEVICE_CHANGED","Device changed before write"));}
     workflow::require_full_read(io).await?;
+    gate()?;
     // Claim before the first write. A failed transaction cannot be replayed.
     let dir=base.join("data/plans");fs::rename(dir.join(format!("{id}.json")),dir.join(format!("{id}.used.json"))).map_err(disk_io)?;
     let journal_path=dir.join(format!("{id}.journal.jsonl"));let mut log=OpenOptions::new().write(true).create_new(true).open(&journal_path).map_err(disk_io)?;
