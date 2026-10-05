@@ -1,6 +1,11 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+import { startThemeSync } from './theme';
+import { syncWindowTheme } from './theme-window';
+import './theme.css';
 import './style.css';
 import './wizard.css';
 import './typography.css';
+const stopThemeSync = startThemeSync(syncWindowTheme);
+if (import.meta.hot) import.meta.hot.dispose(stopThemeSync);
 createApp(App).mount('#app');

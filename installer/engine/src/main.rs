@@ -22,11 +22,17 @@ async fn main() {
             Action::GptCheck(id)=>usb::gpt_check(&id).await,
             Action::BackupCatalog=>k11c_usb::flash::catalog(&base_dir()?),
             Action::StoragePlan(id,location,op,source)=>usb::storage_plan(&id,&location,&op,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::StoragePlanBacked(id,location,op,source,recovery)=>usb::storage_plan_backed(&id,&location,&op,&source,&recovery,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::StoragePlanDirectRestore(id,location,op,source)=>usb::storage_plan_direct_restore(&id,&location,&op,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::ArchiveBackup(id,kind)=>usb::archive_backup(&id,&kind,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::StorageExecute(id)=>usb::storage_execute(&id,true,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::FactoryImport(path)=>k11c_usb::factory::import(&base_dir()?,std::path::Path::new(&path),&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())),
+            Action::FactoryPlan(id,location,source)=>usb::factory_plan(&id,&location,&source,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
+            Action::FactoryExecute(id)=>usb::factory_execute(&id,true,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::Inspect(id)=>usb::inspect(&id).await,
             Action::Prepare(id,location)=>usb::prepare(&id,&location,true,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
             Action::Backup(id)=>usb::backup(&id,&base_dir()?,&mut |p|eprintln!("{}",serde_json::to_string(&p).unwrap())).await,
-            action @ (Action::ImageReleases | Action::ImageDownload(_) | Action::ImageImport(_)) => tokio::task::spawn_blocking(move|| {
+            action @ (Action::ImageReleases | Action::ImageDownload(_) | Action::ImageImport(_) | Action::InstallationImport(_) | Action::BootPrepare) => tokio::task::spawn_blocking(move|| {
                 use k11c_usb::images;
                 let cancel=std::sync::atomic::AtomicBool::new(false);
                 let mut notify=|p|eprintln!("{}",serde_json::to_string(&p).unwrap());
@@ -35,6 +41,8 @@ async fn main() {
                     Action::ImageReleases=>Ok(json!(images::releases(&images::Http::new()?)?)),
                     Action::ImageDownload(v)=>Ok(json!(images::download(&images::Http::new()?,&v,&base_dir()?,&mut job)?)),
                     Action::ImageImport(p)=>Ok(json!(images::import(std::path::Path::new(&p),&base_dir()?,&mut job)?)),
+                    Action::InstallationImport(p)=>{let base=base_dir()?;let raw=images::import(std::path::Path::new(&p),&base,&mut job)?;k11c_usb::components::prepare(&images::Http::new()?,&base,raw,&mut job)},
+                    Action::BootPrepare=>k11c_usb::components::prepare_boot(&images::Http::new()?,&base_dir()?,&mut job),
                     _=>unreachable!(),
                 }
             }).await.map_err(|e|k11c_usb::fail("WORKER",e))?,

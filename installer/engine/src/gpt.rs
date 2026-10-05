@@ -41,6 +41,16 @@ pub fn relocated(primary:&[u8],tail:&[u8],source_sectors:u32,target_sectors:u32)
 }
 
 /// Repair only an unambiguous physical-end GPT. Never infer partition geometry.
+pub fn resized(primary:&[u8],tail:&[u8],source:u32,target:u32)->crate::Result<(Vec<u8>,Vec<u8>)>{
+    if target<source||check(primary,tail,source)["healthy"]!=true{return Err(crate::fail("FACTORY_FORMAT","Invalid full disk GPT or insufficient capacity"));}
+    let mut a=primary.to_vec();put32(&mut a,458,target-1);
+    let h=&mut a[512..1024];put64(h,32,target as u64-1);put64(h,48,target as u64-34);seal(h);
+    let mut b=vec![0;33*512];b[..16384].copy_from_slice(&a[1024..]);b[16384..].copy_from_slice(&a[512..1024]);
+    let h=&mut b[16384..];put64(h,24,target as u64-1);put64(h,32,1);put64(h,72,target as u64-33);seal(h);
+    if check(&a,&b,target)["healthy"]!=true{return Err(crate::fail("FACTORY_FORMAT","Invalid resized manufacturer GPT"));}Ok((a,b))
+}
+
+/// Repair only an unambiguous physical-end GPT. Never infer partition geometry.
 pub fn repaired(primary:&[u8],tail:&[u8],sectors:u32)->crate::Result<(Vec<u8>,Vec<u8>)>{
     use crate::{fail,Result};
     if primary.len()!=34*512||tail.len()!=33*512||sectors<=34849{return Err(fail("GPT_INVALID","Invalid GPT capture"));}

@@ -1,4 +1,4 @@
-# K11C build — U-Boot r24 / Installer 0.4.0
+# K11C build — U-Boot r24 / Installer 0.5.0
 
 Use the official generic-aarch64 HAOS image. No HAOS or kernel ROM rebuild is
 required. Connectivity external modules are built by the separate
@@ -32,23 +32,36 @@ Original licensing remains applicable; see the repository notices.
 
 ## Portable Windows installer
 
-Install Node.js, Rust MSVC and Visual C++ Build Tools. Extract the existing
-0.4.0 portable ZIP outside the repository and point to its resources directory
-(with loader, firmware, rockusb and firmware/manifest.txt).
+Install Node.js, Go 1.26.3 or later, Rust MSVC and Visual C++ Build Tools on
+Windows x64. Download the repository source ZIP with **Code → Download ZIP**,
+or clone it. `installer/resources` contains the USB loader, signed driver,
+manufacturer tool, current U-Boot and native filesystem utilities with their
+DLLs. The Go preparation helper is compiled from `installer/native` during
+the build. No prior portable release, SDK folder, HAOS image or Connectivity
+image is needed.
 
 ```powershell
 cd installer
-$env:K11C_RELEASE_INPUTS = 'C:\K11C-inputs\resources'
 npm ci
 node scripts/build.mjs --check-inputs
 npm run build
 npm run package
 ```
 
+Output: `installer/release/K11C-Installer-0.5.0-windows-x64.zip` and its `.sha256`.
 The actual runtime constants authenticate build inputs; no private developer
-paths or SDK tree are used. Packaging verification requires a Windows PC with
-Rockusb already installed; it does not install a driver for testing.
-Physical USB writes and interrupted-install recovery require board acceptance.
+paths or SDK tree are used. `K11C_GO` can select a Go executable; otherwise the
+normal source-ZIP build uses `go` from PATH. Go is a build-time dependency only.
+See [native preparation](../installer/native/README.md) for the helper and
+filesystem utility sources.
+
+When the installer runs, it reads the repository's compatibility catalog,
+downloads official HAOS and the pinned Connectivity image from GHCR, and
+prepares the initial data partition on Windows. The portable requires Windows
+x64, WebView2 and network access for installation downloads, not Docker, WSL
+or an emulator. Rockusb is bundled and installed with administrator approval
+when missing. Packaging tests do not install the driver.
+See [release setup](RELEASE.md#installer-구성요소-배포) for catalog publication.
 
 ## Repair utilities
 

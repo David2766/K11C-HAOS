@@ -45,7 +45,7 @@ image downloads or local `.img.xz` / `.img` files. It prepares the K11C boot
 layout and GPT for the target eMMC. Advanced tools provide U-Boot-only updates,
 boot-area backup/restore and GPT inspection/repair.
 
-Installer **0.4.0** is a pre-release with physical USB flashing validation still
+Installer **0.5.0** is a pre-release with physical USB flashing validation still
 pending. Its source is in this repository; downloadable builds are listed in
 [Releases](https://github.com/David2766/K11C-HAOS/releases). The current boot
 firmware source is [U-Boot r24](source/boot-release.json).
@@ -133,7 +133,7 @@ eDP/MIPI, 카메라 헤더, 범용 GPIO 및 RTC 알람·깨우기는 아직 검�
 
 [Windows 설치 도구](installer/README.md)는 공식 HAOS 이미지 다운로드,
 로컬 이미지 선택, eMMC 설치와 U-Boot 업데이트를 제공합니다.
-**0.4.0은 실물 USB 기록 검증이 남은 사전 배포 버전**입니다.
+**0.5.0은 실물 USB 기록 검증이 남은 사전 배포 버전**입니다.
 현재 부팅 펌웨어 소스는 r24이며, 다운로드 파일은
 [Releases](https://github.com/David2766/K11C-HAOS/releases)에서 확인할 수 있습니다.
 기존 SD 이미지 설치 방법은 [수동 설치 안내](docs/INSTALL.ko.md)를 참고하세요.

@@ -26,7 +26,7 @@ pub struct Job<'a> { pub cancel: &'a AtomicBool, pub notify: &'a mut dyn FnMut(P
 impl<'a> Job<'a> {
     pub fn new(cancel: &'a AtomicBool, notify: &'a mut dyn FnMut(Progress)) -> Self { Self { cancel, notify, last: Instant::now() - Duration::from_secs(1) } }
     pub fn check(&self) -> Result<()> { if self.cancel.load(Ordering::Relaxed) { Err(fail("IMAGE_CANCELLED", "Image operation cancelled")) } else { Ok(()) } }
-    fn progress(&mut self, phase: &str, n: u64, total: Option<u64>, force: bool) {
+    pub(crate) fn progress(&mut self, phase: &str, n: u64, total: Option<u64>, force: bool) {
         if force || self.last.elapsed() >= Duration::from_millis(150) { (self.notify)(Progress { phase: phase.into(), completed: n, total }); self.last = Instant::now(); }
     }
 }
@@ -38,7 +38,7 @@ pub fn valid_version(v: &str) -> bool {
 fn official_url(release: &Release) -> String { format!("{DOWNLOAD}/{}/{}", release.version, release.filename) }
 fn allowed_url(url: &reqwest::Url) -> bool {
     url.scheme() == "https" && url.username().is_empty() && url.password().is_none() && url.port_or_known_default() == Some(443)
-        && matches!(url.host_str(), Some("api.github.com" | "github.com" | "release-assets.githubusercontent.com" | "objects.githubusercontent.com"))
+        && matches!(url.host_str(), Some("api.github.com" | "github.com" | "raw.githubusercontent.com" | "release-assets.githubusercontent.com" | "objects.githubusercontent.com"))
 }
 
 // Async HTTP behind a synchronous stream lets the image pipeline share one
@@ -84,7 +84,7 @@ impl Transport for Http {
     }
 }
 
-fn json_from(net: &impl Transport, url: &str) -> Result<serde_json::Value> {
+pub(crate) fn json_from(net: &impl Transport, url: &str) -> Result<serde_json::Value> {
     let response = net.get(url)?; let mut bytes = Vec::new();
     response.body.take(MAX_JSON+1).read_to_end(&mut bytes).map_err(|e| fail("IMAGE_NETWORK", e))?;
     if bytes.len() as u64 > MAX_JSON { return Err(fail("IMAGE_RELEASE", "Release metadata too large")); }
@@ -126,7 +126,7 @@ fn open_regular(path: &Path) -> Result<File> {
     let m = f.metadata().map_err(|e| fail("IMAGE_FILE", e))?;
     if !m.is_file() || m.len() == 0 || m.len() > MAX_IMAGE { return Err(fail("IMAGE_FILE", "Expected a nonempty regular image file, at most 32 GiB")); } Ok(f)
 }
-fn file_hash(path: &Path, job: &mut Job<'_>, phase: &str) -> Result<(u64,String)> {
+pub(crate) fn file_hash(path: &Path, job: &mut Job<'_>, phase: &str) -> Result<(u64,String)> {
     let mut f = open_regular(path)?; let total = f.metadata().map_err(|e| fail("IMAGE_FILE", e))?.len();
     let mut hash = Sha256::new(); let mut bytes = 0; let mut buffer = vec![0;CHUNK];
     job.progress(phase,0,Some(total),true);
@@ -134,9 +134,9 @@ fn file_hash(path: &Path, job: &mut Job<'_>, phase: &str) -> Result<(u64,String)
     job.check()?; if bytes != total { return Err(fail("IMAGE_CHANGED", "Image length changed while reading")); }
     Ok((bytes,format!("{:x}",hash.finalize())))
 }
-struct Temporary { path: PathBuf }
+pub(crate) struct Temporary { pub(crate) path: PathBuf }
 impl Temporary {
-    fn new(dir: &Path, extension: &str) -> Result<(Self,File)> {
+    pub(crate) fn new(dir: &Path, extension: &str) -> Result<(Self,File)> {
         fs::create_dir_all(dir).map_err(|e| fail("IMAGE_IO", e))?;
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         let path = dir.join(format!("work-{stamp}-{}.partial.{extension}",std::process::id()));
@@ -146,7 +146,7 @@ impl Temporary {
 }
 impl Drop for Temporary { fn drop(&mut self) { let _ = fs::remove_file(&self.path); } }
 
-fn stream_copy(input: &mut dyn Read, output: &mut File, limit: u64, expected: Option<u64>, job: &mut Job<'_>, phase: &str) -> Result<(u64,String)> {
+pub(crate) fn stream_copy(input: &mut dyn Read, output: &mut File, limit: u64, expected: Option<u64>, job: &mut Job<'_>, phase: &str) -> Result<(u64,String)> {
     let mut buffer = vec![0;CHUNK]; let mut total = 0u64; let mut hash = Sha256::new();
     job.progress(phase,0,expected,true);
     loop {
@@ -161,7 +161,7 @@ fn stream_copy(input: &mut dyn Read, output: &mut File, limit: u64, expected: Op
     output.sync_all().map_err(|e| fail("IMAGE_IO",e))?;
     Ok((total,format!("{:x}",hash.finalize())))
 }
-fn publish(temp: &Temporary, target: &Path, length: u64, hash: &str, job: &mut Job<'_>) -> Result<bool> {
+pub(crate) fn publish(temp: &Temporary, target: &Path, length: u64, hash: &str, job: &mut Job<'_>) -> Result<bool> {
     job.check()?;
     if target.exists() {
         if file_hash(target,job,"verify-cache")? == (length,hash.into()) { return Ok(true); }

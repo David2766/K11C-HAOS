@@ -16,8 +16,23 @@ impl Progress {pub fn new(phase:&str,completed:u64,total:u64)->Self{Self{phase:p
 #[allow(async_fn_in_trait)]
 pub trait UsbIo {
     async fn identity(&mut self)->Result<Identity>;
+    async fn capability(&mut self)->Result<[u8;8]>;
     async fn read(&mut self,lba:u32,bytes:&mut [u8])->Result<u32>;
     async fn upload(&mut self,area:u16,bytes:&[u8])->Result<()>;
+}
+pub async fn require_full_read(io:&mut impl UsbIo)->Result<String> {
+    let caps=io.capability().await?;
+    if caps[0]&0x08==0 {return Err(fail("LOADER_READ_RESTRICTED","Read LBA On is disabled. Power-cycle into MASKROM and prepare with this Installer; no storage operation was started"));}
+    Ok(caps.iter().map(|b|format!("{b:02x}")).collect())
+}
+// A complete 0xCC GPT response matches the vendor read-denial sentinel. Do not
+// classify it as damaged GPT or authorize a repair, even if repeated reads agree.
+// Other damaged/blank GPT bytes remain eligible for a raw recovery backup.
+pub fn require_gpt_bytes(bytes:&[u8])->Result<()> {
+    if !bytes.is_empty() && bytes.iter().all(|b|*b==0xcc) {
+        return Err(fail("USB_READ_UNTRUSTED","GPT read contains only the vendor 0xCC sentinel; actual disk contents are not established"));
+    }
+    Ok(())
 }
 pub async fn read_exact(io:&mut impl UsbIo,lba:u32,buf:&mut [u8])->Result<()> {
     let n=io.read(lba,buf).await?;
@@ -58,6 +73,7 @@ pub fn verify_saved(dir:&Path,parts:&[Part])->Result<()> {
 pub async fn backup(io:&mut impl UsbIo,base:&Path,device:&crate::usb::Device,progress:&mut impl FnMut(Progress))->Result<Value> {
     crate::usb::guard(device)?;
     let identity=io.identity().await?;crate::usb::require_emmc(&identity.storage)?;
+    let capabilities=require_full_read(io).await?;
     let mut parts=plan(identity.sectors)?;
     let dir=new_directory(base)?;
     save_new(&dir.join("incomplete.json"),&serde_json::to_vec_pretty(&json!({"complete":false,"device":device,"identity":identity})).unwrap())?;
@@ -91,8 +107,10 @@ pub async fn backup(io:&mut impl UsbIo,base:&Path,device:&crate::usb::Device,pro
         if after != identity {return Err(fail("DEVICE_CHANGED","Device identity/storage changed during backup"));}
         let primary=fs::read(dir.join("gpt-primary.bin")).map_err(|e|fail("BACKUP_IO",e))?;
         let tail=fs::read(dir.join("gpt-backup.bin")).map_err(|e|fail("BACKUP_IO",e))?;
+        require_gpt_bytes(&primary[512..])?;require_gpt_bytes(&tail)?;
+        require_full_read(io).await?;
         let gpt=crate::gpt::check(&primary,&tail,identity.sectors);
-        let manifest=json!({"format":1,"complete":true,"kind":"k11c-boot-and-gpt","identity":identity,"device":device,
+        let manifest=json!({"format":2,"complete":true,"kind":"k11c-boot-and-gpt","identity":identity,"device":device,"read_capability_hex":capabilities,
             "files":parts,"gpt":gpt,"usb_reread_verified":true,"user_data_included":false});
         save_new(&dir.join("manifest.json"),&serde_json::to_vec_pretty(&manifest).unwrap())?;
         let hashes=parts.iter().map(|p|format!("{}  {}\n",p.sha256,p.file)).collect::<String>();
@@ -108,18 +126,20 @@ pub async fn backup(io:&mut impl UsbIo,base:&Path,device:&crate::usb::Device,pro
 
 #[cfg(test)] pub(crate) mod tests {
     use super::*;
-    pub struct Fake {pub uploads:Vec<(u16,usize)>,pub fail_upload:bool,reads:usize,short:bool,disconnect:bool,changed:bool,identity_change:bool,queries:u32}
-    impl Fake {pub fn new()->Self{Self{uploads:vec![],fail_upload:false,reads:0,short:false,disconnect:false,changed:false,identity_change:false,queries:0}}}
+    pub struct Fake {pub uploads:Vec<(u16,usize)>,pub upload_hashes:Vec<String>,pub fail_upload:bool,reads:usize,short:bool,disconnect:bool,changed:bool,identity_change:bool,queries:u32,restricted:bool,cc_tail:bool,lose_capability:bool,cap_queries:u32}
+    impl Fake {pub fn new()->Self{Self{uploads:vec![],upload_hashes:vec![],fail_upload:false,reads:0,short:false,disconnect:false,changed:false,identity_change:false,queries:0,restricted:false,cc_tail:false,lose_capability:false,cap_queries:0}}}
     impl UsbIo for Fake {
         async fn identity(&mut self)->Result<Identity>{self.queries+=1;Ok(Identity{sectors:65536+if self.identity_change&&self.queries>1{1}else{0},storage:"emmc".into(),chip_hex:"rk3566".into(),flash_id:"EMMC ".into()})}
+        async fn capability(&mut self)->Result<[u8;8]>{self.cap_queries+=1;Ok([if self.restricted||(self.lose_capability&&self.cap_queries>1){0x37}else{0x3f},7,0,0,0,0,0,0])}
         async fn read(&mut self,lba:u32,buf:&mut[u8])->Result<u32>{
             if self.disconnect&&self.reads>3{return Err(fail("USB_READ","disconnected"));}
             for (i,b) in buf.iter_mut().enumerate(){*b=((lba as usize+i/512+i)%251) as u8;}
+            if self.cc_tail&&lba==65536-33{buf.fill(0xcc);}
             // Initial pass has 275 reads: 1+1+272+1.
             if self.changed&&self.reads>=275{buf[0]^=1;}
             self.reads+=1;Ok((buf.len()-if self.short{512}else{0}) as u32)
         }
-        async fn upload(&mut self,area:u16,b:&[u8])->Result<()>{self.uploads.push((area,b.len()));if self.fail_upload{Err(fail("USB_UPLOAD","failure"))}else{Ok(())}}
+        async fn upload(&mut self,area:u16,b:&[u8])->Result<()>{self.uploads.push((area,b.len()));self.upload_hashes.push(crate::hash_bytes(b));if self.fail_upload{Err(fail("USB_UPLOAD","failure"))}else{Ok(())}}
     }
     fn device()->crate::usb::Device{crate::usb::Device{instance_id:"test".into(),vid:0x2207,pid:0x350a,mode:"Loader".into(),binding:true,location:"port1".into(),interface_path:None}}
     fn temp()->PathBuf{let p=std::env::temp_dir().join(format!("k11c-backup-test-{}",SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir(&p).unwrap();p}
@@ -143,8 +163,28 @@ pub async fn backup(io:&mut impl UsbIo,base:&Path,device:&crate::usb::Device,pro
             fs::remove_dir_all(root).unwrap();
         }
     }
+    #[tokio::test] async fn restricted_or_identical_cc_reads_never_publish_a_backup(){
+        for restricted in [true,false] {
+            let root=temp();let mut io=Fake::new();io.restricted=restricted;io.cc_tail=true;
+            let mut completed=false;
+            let err=backup(&mut io,&root,&device(),&mut |p|{completed|=p.phase=="complete";}).await.unwrap_err();
+            assert_eq!(err.code,if restricted{"LOADER_READ_RESTRICTED"}else{"USB_READ_UNTRUSTED"});
+            assert!(!completed);assert!(io.uploads.is_empty());
+            if restricted{assert_eq!(io.reads,0);}
+            for entry in fs::read_dir(&root).unwrap(){let p=entry.unwrap().path();assert_eq!(p.extension().unwrap(),"partial");assert!(!p.join("manifest.json").exists());}
+            fs::remove_dir_all(root).unwrap();
+        }
+        require_gpt_bytes(&vec![0;33*512]).unwrap();require_gpt_bytes(&vec![0xff;33*512]).unwrap();
+    }
+    #[tokio::test] async fn capability_loss_during_backup_never_publishes(){
+        let root=temp();let mut io=Fake::new();io.lose_capability=true;
+        let result=backup(&mut io,&root,&device(),&mut |_|{}).await;
+        assert_eq!(result.unwrap_err().code,"LOADER_READ_RESTRICTED");
+        for entry in fs::read_dir(&root).unwrap(){let p=entry.unwrap().path();assert_eq!(p.extension().unwrap(),"partial");assert!(!p.join("manifest.json").exists());}
+        fs::remove_dir_all(root).unwrap();
+    }
     #[tokio::test] async fn wrong_mode_and_unwritable_destination(){
-        let root=temp();let mut d=device();d.mode="Maskrom".into();let mut io=Fake::new();
+        let root=temp();let mut d=device();d.mode="Unknown".into();let mut io=Fake::new();
         assert!(backup(&mut io,&root,&d,&mut |_|{}).await.is_err());assert_eq!(io.queries,0);
         let p=root.join("not-a-directory");fs::write(&p,b"existing").unwrap();assert!(backup(&mut io,&p,&device(),&mut |_|{}).await.is_err());assert_eq!(fs::read(p).unwrap(),b"existing");fs::remove_dir_all(root).unwrap();
     }

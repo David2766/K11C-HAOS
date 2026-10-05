@@ -43,7 +43,6 @@ __pycache__/
 /installer/data/
 /installer/release/
 /installer/test-results/
-/installer/resources/
 /installer/src-tauri/gen/
 /installer/src-tauri/icons/
 # END K11C CONNECTIVITY CI

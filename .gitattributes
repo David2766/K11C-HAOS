@@ -11,6 +11,7 @@
 /source/boot-release.json -text
 /source/scripts/** -text
 /installer/** -text
+/installer-catalog.json -text
 /tools/boot-fix/** -text
 /tools/check-r23.sh -text
 /docs/BUILD.md -text

@@ -1,4 +1,4 @@
-# K11C 빌드 — U-Boot r24 / Installer 0.4.0
+# K11C 빌드 — U-Boot r24 / Installer 0.5.0
 
 HAOS는 공식 generic-aarch64 배포 파일을 사용합니다. 이 저장소에서 HAOS나
 커널 ROM을 새로 만들 필요는 없습니다. Connectivity 커널 모듈 빌드는 별도
@@ -38,13 +38,15 @@ python3 source/scripts/build-release-uboot.py \
 
 ## Windows 포터블 설치 도구
 
-Node.js, Rust MSVC, Visual C++ Build Tools를 준비합니다.
-기존 0.4.0 ZIP의 `resources` 폴더를 별도 위치에 풀고 지정합니다.
-이 폴더에는 `loader`, `firmware`, `rockusb`가 있어야 합니다.
+Windows x64에 Node.js, Go 1.26.3 이상, Rust MSVC, Visual C++ Build Tools를 준비합니다.
+GitHub의 **Code → Download ZIP**으로 소스를 받거나 저장소를 복제합니다.
+`installer/resources`에는 USB 로더, 서명된 드라이버, 제조사 도구, 현재 U-Boot와
+Windows 파일시스템 도구·DLL이 포함됩니다. 사전설치 준비용 Go 실행 파일은
+빌드 중 `installer/native` 소스에서 생성합니다.
+기존 포터블 ZIP, SDK, HAOS·Connectivity 이미지는 필요하지 않습니다.
 
 ```powershell
 cd installer
-$env:K11C_RELEASE_INPUTS = 'C:\K11C-inputs\resources'
 npm ci
 node scripts/build.mjs --check-inputs
 npm run build
@@ -53,9 +55,18 @@ npm run package
 
 바이너리 입력의 해시는 실제 실행 코드에 지정된 값과 대조합니다.
 개발자의 `C:\rom`이나 SDK 폴더는 필요하지 않습니다.
-`npm run package`의 패키지 검사는 기존 Rockusb 드라이버가 설치된 Windows PC에서
-수행합니다. 드라이버 자동 설치를 테스트 목적으로 실행하지는 않습니다.
-실물 USB 기록·전원 차단 복구는 별도의 보드 검증 항목입니다.
+결과는 `installer/release/K11C-Installer-0.5.0-windows-x64.zip`과 `.sha256`입니다.
+Go 경로를 지정하려면 `K11C_GO`를 사용합니다. 일반 소스 ZIP 빌드에서는
+PATH의 `go`를 사용하며, 완성된 포터블을 실행할 때는 Go가 필요하지 않습니다.
+준비 엔진과 파일시스템 도구의 소스는 [native 안내](../installer/native/README.md)에 있습니다.
+
+프로그램 실행 후 저장소의 호환 목록을 확인하고, 공식 HAOS와 GHCR의 Connectivity
+이미지를 받아 Windows에서 초기 데이터 영역을 생성합니다. 포터블 실행에는
+Windows x64·WebView2와 설치 파일 다운로드를 위한 인터넷이 필요합니다.
+Docker·WSL·에뮬레이터 설치는 필요하지 않습니다.
+Rockusb는 내장되어 있으며 없을 때 관리자 승인으로 설치합니다.
+`npm run package` 검사는 드라이버를 설치하지 않습니다.
+호환 목록을 공개하는 순서는 [배포 안내](RELEASE.md#installer-구성요소-배포)를 참고하세요.
 
 ## GPT 복구 도구
 

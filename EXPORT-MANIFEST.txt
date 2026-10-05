@@ -1,4 +1,4 @@
-app.version=0.5.5
+app.version=0.5.6
 app.kernel=see-source/connectivity/ci/support.json
 app.arch=aarch64
 board=KickPi K11C V1.2
@@ -21,5 +21,5 @@ connectivity_ci_workflow=.github/workflows/build.yaml
 connectivity_export_details=CONNECTIVITY-EXPORT.json
 uboot.revision=r24
 uboot.sha256=8a98fbc73fa93eb106a1202cece0bcb3d05355c4f21cab5c151f5b3d900f6260
-installer.version=0.4.0
+installer.version=0.5.0
 product_export_details=PRODUCT-EXPORT.json

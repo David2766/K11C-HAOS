@@ -1,0 +1,11 @@
+{
+  "cygblkid-1.dll": "876bff927ac5f50be592153599f2a24b3eac7d857ae208294580325aadcdf6a1",
+  "cyggcc_s-seh-1.dll": "2aa1cb02f63b828c7fdbf0c23e7cc7832047184913c7d81db5d5102caef0a4eb",
+  "cygiconv-2.dll": "ef60ac449ec718c1724bad21c9e0c9904659ada9644f3ac7ea8ad5d5b8d8140e",
+  "cygintl-8.dll": "6204e4ceed8b111d56b212a2fc0ec4cd9d570b67f5cae5d3773d74e4e2b2f7d1",
+  "cyguuid-1.dll": "9abd4a72f3144c9aa9d7b61bf4d57794859434067d93ac998eecf911bcfe6b47",
+  "cygwin1.dll": "959048d1407074097af021708d87bdf5ac1a8f107ff963c8950cd6dc8f21afaf",
+  "debugfs.exe": "45feb0ebf04b2dd5cbb33c0fed1ff0c90f6d9e5bb2f5990df346c7878b9271ff",
+  "e2fsck.exe": "fbe47371dce011a645626612a83f6c7d237fb0c7b7bad04372efffe4d73ee2a9",
+  "resize2fs.exe": "dce86f04a5f69129d9ac5e126022ec6b45612a2e03dd021dfdcceb89c1839985"
+}

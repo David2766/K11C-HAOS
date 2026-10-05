@@ -1,6 +1,6 @@
 [package]
 name = "k11c-usb"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT"
 
@@ -10,8 +10,9 @@ serde_json = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "native-tls"] }
 xz2 = { version = "0.1.7", features = ["static"] }
+zstd = { version = "=0.13.3", default-features = false, features = ["zstdmt"] }
 fatfs = "0.3.6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 nusb = { version = "0.2.1", features = ["tokio"] }
 rockusb = { git = "https://github.com/hiifong/rockchiprs.git", rev = "31d8bb996d841e270d4dd55887f60cf9ffe27103", features = ["windows-driver"] }
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_SystemInformation", "Win32_System_Registry", "Win32_System_Diagnostics_Debug", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Security", "Win32_Security_WinTrust", "Win32_Security_Cryptography"] }
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_IO", "Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_SystemInformation", "Win32_System_Registry", "Win32_System_Diagnostics_Debug", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Security", "Win32_Security_WinTrust", "Win32_Security_Cryptography"] }

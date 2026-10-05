@@ -1,0 +1,32 @@
+{
+  "cygwin": {
+    "version": "3.6.11-1",
+    "source": "src/release/cygwin/cygwin-3.6.11-1-src.tar.xz 9316544 0c90f92e714d69013cf9281647a75737952f44acca556959645a7a0669606e2c9caa8217abee667c795824ff6fbe711a020b75d8043818c828713570652bec32",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  },
+  "libblkid1": {
+    "version": "2.40.2-2",
+    "source": "x86_64/release/util-linux/util-linux-2.40.2-2-src.tar.xz 8862568 55f519b022990db0d31cf4e36dee9c84226a71931ce5db213a5fd083974f645b0c0c4434da5cd8c468df9c9855134a9dbadf94b8d23f7104b450e7a211a25701",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  },
+  "libgcc1": {
+    "version": "14.4.0-1",
+    "source": "x86_64/release/gcc/gcc-14.4.0-1-src.tar.zst 91626118 a4fa4be6b610a7d868271027c17c46c5f64e1b125e0bec1d51d34cc47f53a670c95841ad4fdcb5aa236244e8b09e5dc194c64e788fc5011459ba2eb29a815299",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  },
+  "libiconv2": {
+    "version": "1.19-2",
+    "source": "src/release/libiconv/libiconv-1.19-2-src.tar.xz 5086384 62288f9458b6c5a9eec369900971e9c552747b03df0198fbe1749ca93f76bf3d3079109f115ec0f53b2dc2f72c0c8624e21fa439fc41b9a0be339465fce1c534",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  },
+  "libintl8": {
+    "version": "0.22.5-1",
+    "source": "x86_64/release/gettext/gettext-0.22.5-1-src.tar.xz 8483620 101bf0971ec63c5a99fc1f78be0047417ce4bbbe6bee88596a27973cad07cbb7a89e466e3e996332ef9d99b3d38b3bede42e53ca544c5e3540f723ccb8621e04",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  },
+  "libuuid1": {
+    "version": "2.40.2-2",
+    "source": "x86_64/release/util-linux/util-linux-2.40.2-2-src.tar.xz 8862568 55f519b022990db0d31cf4e36dee9c84226a71931ce5db213a5fd083974f645b0c0c4434da5cd8c468df9c9855134a9dbadf94b8d23f7104b450e7a211a25701",
+    "base": "https://mirrors.kernel.org/sourceware/cygwin/"
+  }
+}

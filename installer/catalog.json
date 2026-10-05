@@ -1,0 +1,121 @@
+{
+  "schema": 2,
+  "board": "kickpi,k11c",
+  "arch": "aarch64",
+  "boot": {
+    "revision": "r24",
+    "haos": [
+      "18.3"
+    ],
+    "asset": {
+      "url": "https://raw.githubusercontent.com/David2766/K11C-HAOS/main/installer/resources/firmware/u-boot-k11c-dfi-r24.bin",
+      "sha256": "8a98fbc73fa93eb106a1202cece0bcb3d05355c4f21cab5c151f5b3d900f6260",
+      "bytes": 9687040
+    }
+  },
+  "seeds": [
+    {
+      "haos": "18.3",
+      "kernel": "6.18.52-haos",
+      "official_raw_sha256": "65f6f62ce0c906e7f9d2172a2764cc9ea11c870027de9b443612504d4faa57f2",
+      "catalog_commit": "4d36b0e9068a30269c18133d877662bf58acd163",
+      "app_version": "0.5.6",
+      "image_digest": "ghcr.io/david2766/k11c-haos-connectivity@sha256:76604743be0a06fc8405ecd85a4945fa73977ac5dee69a551ea8c9f056b906dc",
+      "image_id": "sha256:235e8a0682a05d2a411c1cd861d47c629a2adf4cf8649643f527997f5715f236",
+      "supervisor": "ghcr.io/home-assistant/aarch64-hassio-supervisor:2026.09.2",
+      "docker": "29.7.2",
+      "containerd": "2.3.4",
+      "config_sha256": "27b74d4c3516829c63c1bfca9ddeed64b63259682af1a3491584a05b7219d3af",
+      "state": {
+        "system": {
+          "157e89e9_k11c_connectivity": {
+            "name": "K11C Connectivity",
+            "version": "0.5.6",
+            "slug": "k11c_connectivity",
+            "description": "K11C Wi-Fi, Bluetooth, and optional NPU detection API",
+            "arch": [
+              "aarch64"
+            ],
+            "startup": "system",
+            "boot": "auto",
+            "init": false,
+            "stage": "experimental",
+            "kernel_modules": true,
+            "devicetree": true,
+            "video": true,
+            "host_network": true,
+            "hassio_api": true,
+            "hassio_role": "manager",
+            "docker_api": true,
+            "options": {
+              "enabled": false,
+              "antenna_mode": "share",
+              "allow_unverified_board": false,
+              "npu_enabled": false,
+              "inference_enabled": false,
+              "inference_api_key": "",
+              "frigate_native_enabled": false,
+              "frigate_native_app": "ccab4aaf_frigate-fa"
+            },
+            "schema": {
+              "enabled": "bool",
+              "antenna_mode": "list(share|alone)",
+              "allow_unverified_board": "bool",
+              "npu_enabled": "bool",
+              "inference_enabled": "bool",
+              "inference_api_key": "password",
+              "frigate_native_enabled": "bool",
+              "frigate_native_app": "str"
+            },
+            "image": "ghcr.io/david2766/k11c-haos-connectivity",
+            "map": [],
+            "advanced": false,
+            "udev": false,
+            "apparmor": true,
+            "tmpfs": false,
+            "realtime": false,
+            "gpio": false,
+            "auth_api": false,
+            "panel_admin": true,
+            "usb": false,
+            "ingress": false,
+            "host_ipc": false,
+            "host_uts": false,
+            "timeout": 10,
+            "stdin": false,
+            "breaking_versions": [],
+            "audio": false,
+            "host_pid": false,
+            "homeassistant_api": false,
+            "legacy": false,
+            "host_dbus": false,
+            "ingress_port": 8099,
+            "backup": "hot",
+            "panel_icon": "mdi:puzzle",
+            "ulimits": {},
+            "ingress_stream": false,
+            "uart": false,
+            "full_access": false,
+            "journald": false,
+            "repository": "157e89e9",
+            "translations": {}
+          }
+        },
+        "user": {
+          "157e89e9_k11c_connectivity": {
+            "version": "0.5.6",
+            "image": "ghcr.io/david2766/k11c-haos-connectivity",
+            "options": {
+              "enabled": true
+            },
+            "boot": "auto",
+            "protected": false
+          }
+        }
+      },
+      "state_sha256": "c7ab9e8abd29779ccfd7eec937a43a569d5e5d0f4f7e5a263e910de28ac47420",
+      "locally_verified": true,
+      "uboot_sha256": "8a98fbc73fa93eb106a1202cece0bcb3d05355c4f21cab5c151f5b3d900f6260"
+    }
+  ]
+}

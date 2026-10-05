@@ -1,38 +1,32 @@
-/* Secondary text only: 115% of the previous sizes; titles and primary actions stay unchanged. */
-:root {
-  --aux-8: 9.2px;
-  --aux-9: 10.35px;
-  --aux-10: 11.5px;
-  --aux-11: 12.65px;
-  --aux-12: 13.8px;
-  --aux-13: 14.95px;
-}
-.brand small, .repo-note { font-size: var(--aux-8); }
-.nav-label, .eyebrow, .badge, .pill, .subtle-tag, .bottom-hint { font-size: var(--aux-9); }
-.aside-bottom p, .step, .section-heading > .muted, .source-card small,
-label, .repo-note span, .note p, .footer-actions > span,
-.wizard-number, .coming-soon, .wizard-position { font-size: var(--aux-10); }
-.aside-bottom, .device-card p, .status-line, .panel-top p, .fake-input,
-.note strong, .empty-feature p, .error p, .compact p, pre, summary,
-.history-row, .storage-summary span, .image-result p, .image-result dl,
-.review-path, .install-warning p { font-size: var(--aux-11); }
-p, header p, .body-note, .error strong, .setting-row, .connection-steps,
-.storage-summary, .file-placeholder, .review-list > div { font-size: var(--aux-12); }
-.modal p, .confirm-check { font-size: var(--aux-13); }
-
-.release-status { margin-top: 14px; }
-.advanced-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; margin-top: 20px; }
+.release-status { margin-top: 16px; }
+.advanced-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-top: 20px; }
 .advanced-grid > .panel { margin: 0; min-width: 0; }
+.advanced-grid > [data-advanced="backup"] { grid-column: 1 / -1; }
 .advanced-grid .panel-top { align-items: flex-start; }
 .advanced-grid .panel-top > svg { flex: none; }
-.advanced-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }
-@media(max-width:1050px) { .advanced-grid { grid-template-columns: 1fr; } }
-.write-modal { width: 560px; max-height: 90vh; overflow-y: auto; }
-.write-modal .path { display: block; font-size: var(--aux-11); }
-.write-modal label { margin-top: 20px; font-size: var(--aux-12); }
-.write-modal .modal-actions { margin-top: 22px; }
-.write-result { display: flex; gap: 16px; border-color: #3a7663; }
-.write-result > svg { color: #74dfc3; flex: none; }
+.advanced-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px; }
+.advanced-actions + label, [data-advanced="connectivity"] > label { margin-top: 20px; }
+@media (max-width:1050px) { .advanced-grid { grid-template-columns: 1fr; } }
+.write-modal { width: 560px; }
+.write-modal .path { display: block; font-size: 12px; }
+.write-modal label { margin-top: 20px; font-size: 14px; }
+.write-modal .modal-actions { margin-top: 24px; }
+.write-result { display: flex; gap: 16px; border-color: var(--success); }
+.write-result > svg { color: var(--success); flex: none; }
 .write-result h3 { margin: 0 0 12px; }
 .write-result p { margin-top: 8px; }
 .advanced-grid select { width: 100%; }
+.header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; flex: none; }
+.appearance-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.language-picker, .theme-picker { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0 8px; min-height: 36px; border: 1px solid var(--control-border); border-radius: var(--radius-control); background: var(--control); color: var(--text-secondary); }
+.language-picker select, .theme-picker select { border: 0; background: var(--control); color: var(--text); font-size: 14px; padding: 6px 0; min-height: 34px; cursor: pointer; max-width: 150px; }
+nav button > svg, .source-card > svg, .device-icon, .device-card > button, .wizard-number { flex-shrink: 0; }
+.device-title { flex-wrap: wrap; }
+.device-text, .source-card > span, .panel-top > div, .review-list dd { min-width: 0; }
+.review-list dd, .file-placeholder > span { overflow-wrap: anywhere; }
+.wizard-steps button { height: 100%; }
+.setting-row { gap: 16px; }
+.setting-row b { text-align: right; }
+.driver-settings > details + .secondary { margin-top: 20px; }
+.modal { max-height: 90vh; overflow-y: auto; }
+@media (max-width: 1050px) { .appearance-controls { max-width: 176px; } }

@@ -2,6 +2,19 @@ import {readFileSync,realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 
+export function vendorInputs(root,env=process.env){
+ const base=path.resolve(env.K11C_RELEASE_INPUTS??path.join(root,'resources'));
+ const engine=readFileSync(path.join(root,'engine/src/factory.rs'),'utf8');
+ const files=[['upgrade_tool.exe','TOOL_SHA256'],['config.ini','CONFIG_SHA256']].map(([name,key])=>{
+  const expected=engine.match(new RegExp(`const ${key}:&str="([a-f0-9]{64})"`))?.[1];
+  const file=path.join(base,'rockchip',name), actual=createHash('sha256').update(readFileSync(file)).digest('hex');
+  if(!expected||actual!==expected)throw Error('Vendor tool checksum mismatch: '+name);
+  return {name,path:realpathSync(file),sha256:actual};
+ });
+ const revisionPath=realpathSync(path.join(base,'rockchip/revision.txt'));
+ return {files,revisionPath};
+}
+
 // Build-only resource resolution. Runtime trust still comes from the engine's
 // compiled hashes. Accept no different firmware/driver through a build override.
 export function buildInputs(root,env=process.env){
